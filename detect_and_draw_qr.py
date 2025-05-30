@@ -3,15 +3,15 @@ from qreader import QReader
 import numpy as np
 import os
 
-def detect_and_draw_qrcodes(image_path, output_image_path=None):
+def detect_and_draw_qrcodes(image_path):
     """
     Reads an image from disk, detects QR codes in it,
-    and draws a green quadrilateral around each detected QR code.
+    draws a green quadrilateral around each detected QR code, and returns the modified image.
 
     Args:
         image_path (str): Path to the input image file.
-        output_image_path (str, optional): Path to save the output image with detections.
-                                           If None, the image will be displayed instead.
+    Returns:
+        numpy.ndarray: The image with QR codes highlighted, or None if an error occurs.
     """
     # Create a QReader instance
     qreader_detector = QReader()
@@ -20,7 +20,7 @@ def detect_and_draw_qrcodes(image_path, output_image_path=None):
     img = cv2.imread(image_path)
     if img is None:
         print(f"Error: Could not read image from '{image_path}'")
-        return
+        return None
 
     # QReader expects images in RGB format, OpenCV reads in BGR by default
     rgb_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
@@ -90,15 +90,7 @@ def detect_and_draw_qrcodes(image_path, output_image_path=None):
             else:
                 print(f"  QR Code #{i+1} detected, but 'quad_xy' (corner points) are missing in detection_info: {detection_info}. Cannot draw.")
 
-    # Save or display the image
-    if output_image_path:
-        cv2.imwrite(output_image_path, img)
-        print(f"Output image with detected QR codes saved to '{output_image_path}'")
-    else:
-        cv2.imshow("QR Codes Detected", img)
-        print("Press any key to close the image window.")
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
+    return img
 
 if __name__ == "__main__":
     # Define the input and output image paths using absolute paths
@@ -123,8 +115,11 @@ if __name__ == "__main__":
             print(f"Error generating sample QR image '{input_image_abs_path}': {e}")
 
     if os.path.exists(input_image_abs_path):
-        detect_and_draw_qrcodes(input_image_abs_path, output_image_path=output_image_abs_path)
-        # To display the image instead of saving it, call like this:
-        # detect_and_draw_qrcodes(input_image_abs_path)
+        processed_image = detect_and_draw_qrcodes(input_image_abs_path)
+        if processed_image is not None:
+            cv2.imwrite(output_image_abs_path, processed_image)
+            print(f"Output image with detected QR codes saved to '{output_image_abs_path}'")
+        else:
+            print(f"Failed to process image '{input_image_abs_path}'.")
     else:
         print(f"Input image '{input_image_abs_path}' not found. Please create it or modify the path in the script.")
