@@ -55,14 +55,30 @@ def detect_and_draw_qrcodes(image_path, output_image_path=None):
             if quad_corners is not None:
                 try:
                     # quad_corners should be a NumPy array of shape (4, 2) or similar list/tuple.
+                    # Convert to float for calculations if not already
+                    current_points = np.array(quad_corners, dtype=np.float32)
+
+                    # Calculate the centroid of the quadrilateral
+                    centroid = np.mean(current_points, axis=0)
+
+                    # Expand each point by 10% outwards from the centroid
+                    # New_Point = Centroid + 1.1 * (Old_Point - Centroid)
+                    expanded_points = centroid + 1.1 * (current_points - centroid)
+
+                    # Ensure the expanded points are within the image boundaries
+                    img_height, img_width = img.shape[:2]
+                    expanded_points[:, 0] = np.clip(expanded_points[:, 0], 0, img_width - 1) # x-coordinates
+                    expanded_points[:, 1] = np.clip(expanded_points[:, 1], 0, img_height - 1) # y-coordinates
+
                     # cv2.polylines expects points as int32.
-                    points = np.array(quad_corners, dtype=np.int32)
+                    points_for_drawing = np.array(expanded_points, dtype=np.int32)
 
                     # Reshape points for polylines: (num_points, 1, 2)
-                    points = points.reshape((-1, 1, 2))
+                    points_for_drawing = points_for_drawing.reshape((-1, 1, 2))
 
                     # Draw the green polygon (quadrilateral) around the QR code on the original BGR image
-                    cv2.polylines(img, [points], isClosed=True, color=(0, 255, 0), thickness=2)
+                    cv2.polylines(img, [points_for_drawing], isClosed=True, color=(0, 255, 0), thickness=2)
+
                 except (ValueError, TypeError) as e: # Catch TypeError if quad_corners isn't array-like
                     print(f"  Error drawing polygon for QR Code #{i+1}: {e}. Quad corners: {quad_corners}. Skipping drawing for this QR code.")
                     continue  # Skip drawing for this problematic QR code
