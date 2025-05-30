@@ -132,10 +132,8 @@ if __name__ == "__main__":
     # Define the input and output image paths using absolute paths
     base_dir = "/Users/claudiograsso/Documents/Semillas/code/"
     input_image_filename = "IMG_20250521_185356657.jpg" # Example input file name
-    output_image_filename = "qrcode_detected.jpg" # Example output file name
 
     input_image_abs_path = os.path.join(base_dir, input_image_filename)
-    output_image_abs_path = os.path.join(base_dir, output_image_filename)
 
     # For demonstration: if 'qrcode.png' doesn't exist, try to generate a sample one
     if not os.path.exists(input_image_abs_path):
@@ -153,20 +151,26 @@ if __name__ == "__main__":
     if os.path.exists(input_image_abs_path):
         list_of_images = detect_and_draw_qrcodes(input_image_abs_path)
         if list_of_images: # Check if the list is not None and not empty
-            # Save the main image (first in the list)
-            main_image_to_save = list_of_images[0]
-            cv2.imwrite(output_image_abs_path, main_image_to_save)
-            print(f"Output image with detected QR codes saved to '{output_image_abs_path}'")
+            # Get base name (including path) and extension from the input_image_abs_path
+            input_path_basename, input_ext = os.path.splitext(input_image_abs_path)
 
-            # Save the cropped QR images, if any
+            # --- Save the main image (first in the list) ---
+            main_image_to_save = list_of_images[0]
+            # Construct the output path for the main image with detections
+            output_detections_abs_path = f"{input_path_basename}_detections{input_ext}"
+            cv2.imwrite(output_detections_abs_path, main_image_to_save)
+            print(f"Output image with detected QR codes saved to '{output_detections_abs_path}'")
+
+            # --- Save the cropped QR images, if any ---
             if len(list_of_images) > 1:
-                base_name, ext = os.path.splitext(output_image_abs_path)
                 for i, cropped_img in enumerate(list_of_images[1:]):
-                    # Create indexed filename like qrcode_detected_1.jpg, qrcode_detected_2.jpg
-                    cropped_output_path = f"{base_name}_{i + 1}{ext}"
-                    cv2.imwrite(cropped_output_path, cropped_img)
-                    print(f"Saved cropped QR image to '{cropped_output_path}'")
+                    # Construct the output path for each cropped QR image
+                    # e.g., /path/to/input_qr_1.jpg, /path/to/input_qr_2.jpg
+                    cropped_qr_abs_path = f"{input_path_basename}_qr_{i + 1}{input_ext}"
+                    cv2.imwrite(cropped_qr_abs_path, cropped_img)
+                    print(f"Saved cropped QR image to '{cropped_qr_abs_path}'")
         else:
             print(f"Failed to process image '{input_image_abs_path}'.")
     else:
+
         print(f"Input image '{input_image_abs_path}' not found. Please create it or modify the path in the script.")
