@@ -11,39 +11,46 @@ def detect_and_draw_qrcodes(image_path):
     Args:
         image_path (str): Path to the input image file.
     Returns:
-        list[numpy.ndarray] or None:
-            A list containing one image:
-            - The image with QR codes highlighted by green quadrilaterals.
-            - If no QR codes are found, it's the original image.
+        list[numpy.ndarray] or None: A list of images.
+            - The first image is the input image with QR codes highlighted by
+              green quadrilaterals. If no QR codes are found, it's the
+              original unmodified image.
+            - Subsequent images in the list are the cropped individual QR code
+              regions, if any were detected and successfully cropped.
             Returns None if the image cannot be read.
     """
     # Create a QReader instance
     qreader_detector = QReader()
 
     # Read the image using OpenCV
-    img = cv2.imread(image_path)
-    if img is None:
+    original_image = cv2.imread(image_path)
+    if original_image is None:
         print(f"Error: Could not read image from '{image_path}'")
         return None
 
+    # This will be the image we draw on, and the first image returned.
+    # If no QRs are found, it remains the original_image. If QRs are found, it becomes a copy.
+    image_for_display = original_image
+    cropped_qr_images = []
+
     # QReader expects images in RGB format, OpenCV reads in BGR by default
-    rgb_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    # Use the original_image for conversion, as it's pristine.
+    rgb_img = cv2.cvtColor(original_image, cv2.COLOR_BGR2RGB)
 
     # Step 1: Detect QR codes to get bounding boxes.
     # qreader.detect() returns a list of bounding boxes (numpy arrays of points),
     # or None if no QR codes are found.
     detected_bboxes = qreader_detector.detect(image=rgb_img)
 
-    if not detected_bboxes:  # Handles None or an empty list
-        print(f"No QR codes found in '{image_path}'.")
-    else:
+    if detected_bboxes:  # Handles None or an empty list
         print(f"Found {len(detected_bboxes)} QR code(s) in '{image_path}'.")
+        # Create a copy to draw on, so original_image remains clean for cropping
+        image_for_display = original_image.copy()
 
         for i, detection_info in enumerate(detected_bboxes):
             # detection_info is a dictionary from qreader.detect(),
             # containing keys like 'bbox_xyxy', 'confidence', 'quad_xy'.
             # 'quad_xy' holds the four corner points of the QR code.
-
             decoded_text = None
             try:
                 # Step 2: Decode the text for each detected QR code using its bounding box.
@@ -70,7 +77,7 @@ def detect_and_draw_qrcodes(image_path):
                     expanded_points = centroid + 1.1 * (current_points - centroid)
 
                     # Ensure the expanded points are within the image boundaries
-                    img_height, img_width = img.shape[:2]
+                    img_height, img_width = original_image.shape[:2]
                     expanded_points[:, 0] = np.clip(expanded_points[:, 0], 0, img_width - 1) # x-coordinates
                     expanded_points[:, 1] = np.clip(expanded_points[:, 1], 0, img_height - 1) # y-coordinates
 
@@ -80,8 +87,31 @@ def detect_and_draw_qrcodes(image_path):
                     # Reshape points for polylines: (num_points, 1, 2)
                     points_for_drawing = points_for_drawing.reshape((-1, 1, 2))
 
-                    # Draw the green polygon (quadrilateral) around the QR code on the original BGR image
-                    cv2.polylines(img, [points_for_drawing], isClosed=True, color=(0, 255, 0), thickness=2)
+                    # Draw the green polygon on the image_for_display
+                    cv2.polylines(image_for_display, [points_for_drawing], isClosed=True, color=(0, 255, 0), thickness=2)
+
+                    # --- Crop the QR region from the original_image ---
+                    # Use the bounding box of the expanded_points for cropping
+                    x_coords = expanded_points[:, 0]
+                    y_coords = expanded_points[:, 1]
+
+                    # Determine the min/max coordinates for the crop area
+                    crop_x_start = int(np.min(x_coords))
+                    crop_y_start = int(np.min(y_coords))
+                    # For slicing, the end point is exclusive. To include the max coordinate, add 1.
+                    crop_x_end = int(np.max(x_coords)) + 1
+                    crop_y_end = int(np.max(y_coords)) + 1
+
+                    # Ensure crop coordinates define a valid, non-empty region
+                    if crop_x_start < crop_x_end and crop_y_start < crop_y_end:
+                        # Crop from the pristine original_image
+                        cropped_qr_img = original_image[crop_y_start:crop_y_end, crop_x_start:crop_x_end]
+                        if cropped_qr_img.size > 0: # Check if the slice is not empty
+                            cropped_qr_images.append(cropped_qr_img)
+                        else:
+                            print(f"  QR Code #{i+1} resulted in an empty crop slice. Skipping.")
+                    else:
+                        print(f"  QR Code #{i+1} has invalid dimensions for cropping. Skipping crop.")
 
                 except (ValueError, TypeError) as e: # Catch TypeError if quad_corners isn't array-like
                     print(f"  Error drawing polygon for QR Code #{i+1}: {e}. Quad corners: {quad_corners}. Skipping drawing for this QR code.")
@@ -93,8 +123,10 @@ def detect_and_draw_qrcodes(image_path):
                     print(f"  QR Code #{i+1} detected (bounding box found), but could not be decoded.")
             else:
                 print(f"  QR Code #{i+1} detected, but 'quad_xy' (corner points) are missing in detection_info: {detection_info}. Cannot draw.")
+    else:
+        print(f"No QR codes found in '{image_path}'.")
 
-    return [img] # Return a list containing the processed image
+    return [image_for_display] + cropped_qr_images
 
 if __name__ == "__main__":
     # Define the input and output image paths using absolute paths
@@ -120,11 +152,20 @@ if __name__ == "__main__":
 
     if os.path.exists(input_image_abs_path):
         list_of_images = detect_and_draw_qrcodes(input_image_abs_path)
-        if list_of_images is not None:
-            # The first item is the image with green boxes (or original if no QR found)
-            image_to_save = list_of_images[0]
-            cv2.imwrite(output_image_abs_path, image_to_save)
+        if list_of_images: # Check if the list is not None and not empty
+            # Save the main image (first in the list)
+            main_image_to_save = list_of_images[0]
+            cv2.imwrite(output_image_abs_path, main_image_to_save)
             print(f"Output image with detected QR codes saved to '{output_image_abs_path}'")
+
+            # Save the cropped QR images, if any
+            if len(list_of_images) > 1:
+                base_name, ext = os.path.splitext(output_image_abs_path)
+                for i, cropped_img in enumerate(list_of_images[1:]):
+                    # Create indexed filename like qrcode_detected_1.jpg, qrcode_detected_2.jpg
+                    cropped_output_path = f"{base_name}_{i + 1}{ext}"
+                    cv2.imwrite(cropped_output_path, cropped_img)
+                    print(f"Saved cropped QR image to '{cropped_output_path}'")
         else:
             print(f"Failed to process image '{input_image_abs_path}'.")
     else:
