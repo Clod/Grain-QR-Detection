@@ -88,7 +88,7 @@ def detect_and_draw_qrcodes(image_path):
                     points_for_drawing = points_for_drawing.reshape((-1, 1, 2))
 
                     # Draw the green polygon on the image_for_display
-                    cv2.polylines(image_for_display, [points_for_drawing], isClosed=True, color=(0, 255, 0), thickness=2)
+                    cv2.polylines(image_for_display, [points_for_drawing], isClosed=True, color=(0, 255, 0), thickness=4)
 
                     # --- Crop the QR region from the original_image ---
                     # Use the bounding box of the expanded_points for cropping
@@ -157,7 +157,7 @@ if __name__ == "__main__":
             # --- Save the main image (first in the list) ---
             main_image_to_save = list_of_images[0]
             # Construct the output path for the main image with detections
-            output_detections_abs_path = f"{input_path_basename}_detections{input_ext}"
+            output_detections_abs_path = f"{input_path_basename}_qr_all{input_ext}"
             cv2.imwrite(output_detections_abs_path, main_image_to_save)
             print(f"Output image with detected QR codes saved to '{output_detections_abs_path}'")
 

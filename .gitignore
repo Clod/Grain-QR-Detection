@@ -2,6 +2,8 @@
 
 venv/
 images/
+copy_of_images/
 Maiz-PruebaPiloto-20250530T155138Z-1-001.zip
 
 *.jpg
+__pycache__/detect_and_draw_qr.cpython-311.pyc
