@@ -6,12 +6,16 @@ import os
 def detect_and_draw_qrcodes(image_path):
     """
     Reads an image from disk, detects QR codes in it,
-    draws a green quadrilateral around each detected QR code, and returns the modified image.
+    draws a green quadrilateral around each detected QR code.
 
     Args:
         image_path (str): Path to the input image file.
     Returns:
-        numpy.ndarray: The image with QR codes highlighted, or None if an error occurs.
+        list[numpy.ndarray] or None:
+            A list containing one image:
+            - The image with QR codes highlighted by green quadrilaterals.
+            - If no QR codes are found, it's the original image.
+            Returns None if the image cannot be read.
     """
     # Create a QReader instance
     qreader_detector = QReader()
@@ -90,7 +94,7 @@ def detect_and_draw_qrcodes(image_path):
             else:
                 print(f"  QR Code #{i+1} detected, but 'quad_xy' (corner points) are missing in detection_info: {detection_info}. Cannot draw.")
 
-    return img
+    return [img] # Return a list containing the processed image
 
 if __name__ == "__main__":
     # Define the input and output image paths using absolute paths
@@ -115,9 +119,11 @@ if __name__ == "__main__":
             print(f"Error generating sample QR image '{input_image_abs_path}': {e}")
 
     if os.path.exists(input_image_abs_path):
-        processed_image = detect_and_draw_qrcodes(input_image_abs_path)
-        if processed_image is not None:
-            cv2.imwrite(output_image_abs_path, processed_image)
+        list_of_images = detect_and_draw_qrcodes(input_image_abs_path)
+        if list_of_images is not None:
+            # The first item is the image with green boxes (or original if no QR found)
+            image_to_save = list_of_images[0]
+            cv2.imwrite(output_image_abs_path, image_to_save)
             print(f"Output image with detected QR codes saved to '{output_image_abs_path}'")
         else:
             print(f"Failed to process image '{input_image_abs_path}'.")
