@@ -9,6 +9,18 @@ A Python toolkit for reading, detecting, and processing QR codes in image files.
 - Detect and draw QR codes in images
 - Batch processing of multiple images
 
+<div style="display: flex; gap: 10px;">
+   <img src="readme_img/IMG_20250521_185356657.jpg" alt="Alt Text" width="300">
+
+   <img src="readme_img/IMG_20250521_185356657_qr_all.jpg" alt="Alt Text" width="300">
+</div>
+
+<div style="display: flex; gap: 10px;">
+   <img src="readme_img/IMG_20250521_185356657_qr_1.jpg" alt="Alt Text">
+
+   <img src="readme_img/IMG_20250521_185356657_qr_2.jpg" alt="Alt Text">
+</div>
+
 ## Installation
 
 1. Clone this repository:
