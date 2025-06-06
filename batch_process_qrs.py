@@ -1,32 +1,43 @@
 """
-This script provides a utility to batch process images in a specified directory
-to detect and highlight QR codes using the `qreader` and `opencv` libraries.
+This script provides a utility to batch process images in a specified directory.
+It first attempts to detect a ChArUco board in each image and then, using the
+(potentially modified) image from ChArUco detection, detects and highlights
+QR codes.
 
 It iterates through all files in the target directory, identifies supported
 image files, and for each image:
-1. Calls the `detect_and_draw_qrcodes` function (presumably from `detect_and_draw_qr.py`)
-   to find QR codes and get the image with detections drawn, plus any cropped
-   individual QR code images.
-2. Saves the main image with detections to a new file named
+1. Calls `detect_charuco_board` (from `charuco_detector.py`) to find ChArUco
+   board patterns. The ChArUco board parameters (dimensions, marker size, etc.)
+   are configurable within this script.
+2. The image returned by `detect_charuco_board` (which may have ChArUco
+   markers/corners drawn on it) is then passed to `detect_and_draw_qrcodes`
+   (from `detect_and_draw_qr.py`).
+3. This second function finds QR codes, draws highlights around them, and
+   extracts cropped images of individual QR codes.
+4. The main image (output of ChArUco detection, further modified with QR
+   detections) is saved to a new file named `original_filename_qr_all.ext`.
+5. Each successfully cropped individual QR code image is saved to files named
    `original_filename_qr_all.ext`.
-3. Saves each successfully cropped individual QR code image to files named
-   `original_filename_qr_N.ext`, where N is the index of the cropped QR code.
 
-This script is useful for quickly processing a collection of images containing
-QR codes, visualizing the detections, and extracting the individual QR code
-regions for further analysis or decoding.
+This script is useful for processing a collection of images that may contain
+both ChArUco boards and QR codes, visualizing all detections, and extracting
+the individual QR code regions.
 
 Requirements:
 - OpenCV (cv2)
 - qreader
 - numpy (usually installed with opencv or qreader)
 - The `detect_and_draw_qr.py` script must be accessible (e.g., in the same
-  directory or in your PYTHONPATH).
+  directory or in PYTHONPATH).
+- The `charuco_detector.py` script must be accessible.
 
 Usage:
-1. Ensure you have the required libraries installed (`pip install opencv-python qreader numpy`).
-2. Make sure `detect_and_draw_qr.py` is in the same directory or accessible.
-3. Modify the `target_image_directory` variable in the `if __name__ == "__main__":`
+1. Ensure required libraries are installed (`pip install opencv-python qreader numpy`).
+2. Make sure `detect_and_draw_qr.py` and `charuco_detector.py` are in the
+   same directory or accessible in PYTHONPATH.
+3. Configure ChArUco board parameters (e.g., `squares_x`, `marker_length_mm`)
+   at the top of this script if they differ from the defaults.
+4. Modify the `target_image_directory` variable in the `if __name__ == "__main__":`
    block to point to the directory containing your images.
 4. Run the script: `python batch_process_qrs.py`
 5. The processed images and cropped QR codes will be saved in the same
@@ -35,6 +46,10 @@ Usage:
 Note: The script assumes the `detect_and_draw_qrcodes` function returns a list
 where the first element is the image with detections and subsequent elements
 are cropped QR images.
+Note:
+- The script assumes `detect_charuco_board` returns an image (NumPy array) or None.
+- It assumes `detect_and_draw_qrcodes` returns a list where the first element
+  is the image with QR detections and subsequent elements are cropped QR images.
 """
 
 import os
@@ -57,12 +72,19 @@ square_length_mm = (board_width_cm * 10.0) / squares_x
 
 def process_images_in_directory(directory_path):
     """
-    Processes all images in a given directory to detect and draw QR codes.
+    Processes all images in a given directory. For each image, it first
+    attempts ChArUco board detection, then performs QR code detection on the
+    resulting image.
 
-    For each image, it calls detect_and_draw_qrcodes and saves the results
-    following the convention:
-    - Main image with detections: original_filename_detections.ext
-    - Cropped QR images: original_filename_qr_N.ext
+    The processing steps for each image are:
+    1. Load the image.
+    2. Call `detect_charuco_board` with pre-configured board parameters.
+       This function may draw ChArUco detections on the image.
+    3. Pass the image from step 2 to `detect_and_draw_qrcodes`.
+    4. Save the results:
+       - Main image with ChArUco (if any) and QR detections:
+         `original_filename_qr_all.ext`
+       - Cropped QR images: `original_filename_qr_N.ext`
 
     Args:
         directory_path (str): The path to the directory containing images.

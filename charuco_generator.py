@@ -5,8 +5,9 @@ A ChArUco board is a planar board where the markers are placed inside the white
 squares of a chessboard. This combination allows for more robust detection
 and pose estimation compared to using only ArUco markers or a standard chessboard.
 
-The script allows customization of the board dimensions, marker size,
-ArUco dictionary, output filename, and resolution (DPI).
+The script allows customization of the board's physical dimensions (number of
+squares, square size, marker size), the ArUco dictionary used, the output
+filename, and the rendering resolution (DPI).
 
 Requirements:
 - OpenCV with aruco module (cv2)
@@ -28,25 +29,33 @@ import numpy as np
 
 def generate_charuco_board(squares_x, squares_y, square_length_mm, marker_length_mm, dictionary_name, output_filename="charuco_board.png", dpi=600):
     """
-    Generates and saves a ChArUco board image.
+    Generates and saves a ChArUco board image with specified physical dimensions.
+
+    The board is defined by the number of squares, the physical length of the
+    squares, and the physical length of the ArUco markers within them. These
+    lengths are converted to meters for the `cv2.aruco.CharucoBoard` object.
+    The output image is rendered at a specified DPI to match these physical
+    dimensions when printed.
 
     Args:
-        squares_x (int): Number of squares in X direction.
-        squares_y (int): Number of squares in Y direction.
-        square_length_mm (float): Length of a square in millimeters.
-        marker_length_mm (float): Length of a marker in millimeters.
-        dictionary_name (str): Name of the Aruco dictionary to use (e.g., "DICT_4X4_50", "DICT_5X5_100").
+        squares_x (int): Number of squares in the X direction.
+        squares_y (int): Number of squares in the Y direction.
+        square_length_mm (float): Physical side length of each square in millimeters.
+                               This defines the board's metric size.
+        marker_length_mm (float): Physical side length of each ArUco marker in millimeters.
+                                This defines the marker's metric size within the square.
+        dictionary_name (str): Name of the ArUco dictionary to use
+                               (e.g., "DICT_4X4_50", "DICT_5X5_100").
         output_filename (str): Name of the output image file.
-        dpi (int): Dots per inch for the output image resolution.
+        dpi (int): Dots per inch for the output image, ensuring the printed
+                   board matches the specified physical dimensions.
     """
-
     # Get the ArUco dictionary
     try:
         dictionary = cv2.aruco.getPredefinedDictionary(getattr(cv2.aruco, dictionary_name))
     except AttributeError:
         print(f"Error: Dictionary '{dictionary_name}' not found. Please check the dictionary name.")
         return
-
     # Create the ChArUco board object
     # The arguments are:
     # squaresX, squaresY: The number of squares in the X and Y directions.

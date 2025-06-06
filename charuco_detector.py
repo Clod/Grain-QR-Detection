@@ -5,6 +5,9 @@ It takes an image file as input, attempts to find the specified ChArUco board
 within it, and then draws the detected ArUco markers and interpolated ChArUco
 corners on the image.
 
+The script utilizes `cv2.aruco.CharucoDetector` along with `cv2.aruco.CharucoParameters`
+and `cv2.aruco.DetectorParameters` for robust detection.
+
 The script requires the same board parameters (dimensions, square/marker lengths,
 and dictionary) that were used to generate the ChArUco board.
 
@@ -40,6 +43,10 @@ def detect_charuco_board(image_input, squares_x, squares_y, square_length_mm, ma
         marker_length_mm (float): Length of a marker in millimeters.
         dictionary_name (str): Name of the Aruco dictionary used (e.g., "DICT_4X4_50").
         display (bool): Whether to display the image with detections.
+
+    Note:
+        The function now uses `cv2.aruco.CharucoDetector` for detection, which
+        internally handles ArUco marker detection and ChArUco corner interpolation.
 
     Returns:
         numpy.ndarray or None: The image with detections drawn, or None if an error occurs.

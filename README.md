@@ -1,8 +1,6 @@
 # Grain-QD-Detection
-
-# QR Code Processing Toolkit
-
-A Python toolkit for reading, detecting, and processing QR codes in image files.
+ 
+This project is a Python toolkit for reading, detecting, and processing QR codes and ChArUco boards in image files.
 
 ## Features
 - Read QR codes from image files
@@ -10,21 +8,22 @@ A Python toolkit for reading, detecting, and processing QR codes in image files.
 - Batch processing of multiple images
 
 <div style="display: flex; gap: 10px;">
-   <img src="readme_img/IMG_20250521_185356657.jpg" alt="Alt Text" width="300">
+   <img src="readme_img/IMG_20250521_185356657.jpg" alt="Original image with multiple QR codes" width="300">
 
-   <img src="readme_img/IMG_20250521_185356657_qr_all.jpg" alt="Alt Text" width="300">
+   <img src="readme_img/IMG_20250521_185356657_qr_all.jpg" alt="Image with all detected QR codes highlighted" width="300">
 </div>
 
 <div style="display: flex; gap: 10px;">
-   <img src="readme_img/IMG_20250521_185356657_qr_1.jpg" alt="Alt Text">
+   <img src="readme_img/IMG_20250521_185356657_qr_1.jpg" alt="Cropped image of the first detected QR code">
 
-   <img src="readme_img/IMG_20250521_185356657_qr_2.jpg" alt="Alt Text">
+   <img src="readme_img/IMG_20250521_185356657_qr_2.jpg" alt="Cropped image of the second detected QR code">
 </div>
 
 ## Installation
 
 1. Clone this repository:
-   git clone https://github.com/yourusername/qr-code-toolkit.git
+   git clone https://github.com/[YOUR_USERNAME]/[YOUR_REPOSITORY_NAME].git
+   <!-- TODO: Update with the actual repository URL -->
 
 2. Install dependencies:
    pip install -r requirements.txt
