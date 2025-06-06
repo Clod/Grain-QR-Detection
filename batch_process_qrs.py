@@ -1,3 +1,42 @@
+"""
+This script provides a utility to batch process images in a specified directory
+to detect and highlight QR codes using the `qreader` and `opencv` libraries.
+
+It iterates through all files in the target directory, identifies supported
+image files, and for each image:
+1. Calls the `detect_and_draw_qrcodes` function (presumably from `detect_and_draw_qr.py`)
+   to find QR codes and get the image with detections drawn, plus any cropped
+   individual QR code images.
+2. Saves the main image with detections to a new file named
+   `original_filename_qr_all.ext`.
+3. Saves each successfully cropped individual QR code image to files named
+   `original_filename_qr_N.ext`, where N is the index of the cropped QR code.
+
+This script is useful for quickly processing a collection of images containing
+QR codes, visualizing the detections, and extracting the individual QR code
+regions for further analysis or decoding.
+
+Requirements:
+- OpenCV (cv2)
+- qreader
+- numpy (usually installed with opencv or qreader)
+- The `detect_and_draw_qr.py` script must be accessible (e.g., in the same
+  directory or in your PYTHONPATH).
+
+Usage:
+1. Ensure you have the required libraries installed (`pip install opencv-python qreader numpy`).
+2. Make sure `detect_and_draw_qr.py` is in the same directory or accessible.
+3. Modify the `target_image_directory` variable in the `if __name__ == "__main__":`
+   block to point to the directory containing your images.
+4. Run the script: `python batch_process_qrs.py`
+5. The processed images and cropped QR codes will be saved in the same
+   `target_image_directory`.
+
+Note: The script assumes the `detect_and_draw_qrcodes` function returns a list
+where the first element is the image with detections and subsequent elements
+are cropped QR images.
+"""
+
 import os
 import cv2
 # Assuming detect_and_draw_qr.py is in the same directory or accessible in PYTHONPATH
