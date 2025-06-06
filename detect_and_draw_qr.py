@@ -3,13 +3,13 @@ from qreader import QReader
 import numpy as np
 import os
 
-def detect_and_draw_qrcodes(image_path):
+def detect_and_draw_qrcodes(image_input):
     """
     Reads an image from disk, detects QR codes in it,
     draws a green quadrilateral around each detected QR code.
 
     Args:
-        image_path (str): Path to the input image file.
+        image_input (str or numpy.ndarray): Path to the input image file or the image itself (as a NumPy array).
     Returns:
         list[numpy.ndarray] or None: A list of images.
             - The first image is the input image with QR codes highlighted by
@@ -17,15 +17,21 @@ def detect_and_draw_qrcodes(image_path):
               original unmodified image.
             - Subsequent images in the list are the cropped individual QR code
               regions, if any were detected and successfully cropped.
-            Returns None if the image cannot be read.
+            Returns None if the image cannot be read or if input type is invalid.
     """
     # Create a QReader instance
     qreader_detector = QReader()
 
-    # Read the image using OpenCV
-    original_image = cv2.imread(image_path)
-    if original_image is None:
-        print(f"Error: Could not read image from '{image_path}'")
+    if isinstance(image_input, str):
+        # Input is a path, load the image
+        original_image = cv2.imread(image_input)
+        if original_image is None:
+            print(f"Error: Could not read image from path: '{image_input}'")
+            return None
+    elif isinstance(image_input, np.ndarray):
+        original_image = image_input.copy() # Work on a copy
+    else:
+        print(f"Error: Invalid input type. Expected string path or NumPy array, got {type(image_input)}.")
         return None
 
     # This will be the image we draw on, and the first image returned.
@@ -43,7 +49,11 @@ def detect_and_draw_qrcodes(image_path):
     detected_bboxes = qreader_detector.detect(image=rgb_img)
 
     if detected_bboxes:  # Handles None or an empty list
-        print(f"Found {len(detected_bboxes)} QR code(s) in '{image_path}'.")
+        # Determine the source for logging
+        image_source_name = image_input if isinstance(image_input, str) else "the provided image array"
+        print(f"Found {len(detected_bboxes)} QR code(s) in {image_source_name}.")
+
+
         # Create a copy to draw on, so original_image remains clean for cropping
         image_for_display = original_image.copy()
 
@@ -125,6 +135,8 @@ def detect_and_draw_qrcodes(image_path):
                 print(f"  QR Code #{i+1} detected, but 'quad_xy' (corner points) are missing in detection_info: {detection_info}. Cannot draw.")
     else:
         print(f"No QR codes found in '{image_path}'.")
+        image_source_name = image_input if isinstance(image_input, str) else "the provided image array"
+        print(f"No QR codes found in {image_source_name}.")
 
     return [image_for_display] + cropped_qr_images
 
@@ -150,6 +162,7 @@ if __name__ == "__main__":
 
     if os.path.exists(input_image_abs_path):
         list_of_images = detect_and_draw_qrcodes(input_image_abs_path)
+
         if list_of_images: # Check if the list is not None and not empty
             # Get base name (including path) and extension from the input_image_abs_path
             input_path_basename, input_ext = os.path.splitext(input_image_abs_path)
@@ -171,6 +184,24 @@ if __name__ == "__main__":
                     print(f"Saved cropped QR image to '{cropped_qr_abs_path}'")
         else:
             print(f"Failed to process image '{input_image_abs_path}'.")
-    else:
 
+        # --- Example of passing an already loaded image ---
+        print("\n--- Testing with a pre-loaded image ---")
+        loaded_img_for_qr = cv2.imread(input_image_abs_path)
+        if loaded_img_for_qr is not None:
+            list_from_array = detect_and_draw_qrcodes(loaded_img_for_qr)
+            if list_from_array:
+                input_path_basename, input_ext = os.path.splitext(input_image_abs_path)
+                # Save the main image from array processing
+                main_img_from_array = list_from_array[0]
+                output_from_array_path = f"{input_path_basename}_qr_all_from_array{input_ext}"
+                cv2.imwrite(output_from_array_path, main_img_from_array)
+                print(f"Output image (from array) with detected QR codes saved to '{output_from_array_path}'")
+                # Save cropped images from array processing
+                if len(list_from_array) > 1:
+                    for i, cropped_img_arr in enumerate(list_from_array[1:]):
+                        cropped_qr_from_array_path = f"{input_path_basename}_qr_{i + 1}_from_array{input_ext}"
+                        cv2.imwrite(cropped_qr_from_array_path, cropped_img_arr)
+                        print(f"Saved cropped QR image (from array) to '{cropped_qr_from_array_path}'")
+    else:
         print(f"Input image '{input_image_abs_path}' not found. Please create it or modify the path in the script.")

@@ -40,10 +40,20 @@ are cropped QR images.
 import os
 import cv2
 # Assuming detect_and_draw_qr.py is in the same directory or accessible in PYTHONPATH
+from charuco_detector import detect_charuco_board
 from detect_and_draw_qr import detect_and_draw_qrcodes
 
 # Define supported image extensions
 SUPPORTED_IMAGE_EXTENSIONS = ('.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.tif', '.webp')
+
+# --- Configuration for your specific board (MUST MATCH GENERATION SCRIPT) ---
+squares_x = 5
+squares_y = 5
+board_width_cm = 5.0 # This is used to calculate square_length_mm
+marker_length_mm = 7.0
+dictionary_name = "DICT_4X4_100" # Ensure this matches the dictionary used for generation
+# Calculate square length based on desired board width
+square_length_mm = (board_width_cm * 10.0) / squares_x
 
 def process_images_in_directory(directory_path):
     """
@@ -70,9 +80,14 @@ def process_images_in_directory(directory_path):
             image_files_found += 1
             input_image_abs_path = os.path.join(directory_path, filename)
             print(f"\nProcessing image: '{input_image_abs_path}'...")
+            
+            # Detect CharUcoBoards
+            charuco_image = detect_charuco_board(input_image_abs_path, squares_x, squares_y, square_length_mm, marker_length_mm, dictionary_name)
+            
+            list_of_images = detect_and_draw_qrcodes(charuco_image)
 
             # Apply the QR detection and drawing function
-            list_of_images = detect_and_draw_qrcodes(input_image_abs_path)
+            # list_of_images = detect_and_draw_qrcodes(input_image_abs_path)
 
             if list_of_images:  # Check if the list is not None and not empty
                 # os.path.splitext splits "path/to/file.ext" into ("path/to/file", ".ext")
