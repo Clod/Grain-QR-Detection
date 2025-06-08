@@ -62,13 +62,12 @@ class ImageViewerApp:
 
         # Transformation state for the processed image view
         self.current_zoom_level = 1.0
+        self.current_offset_x = 0.0
+        self.current_offset_y = 0.0
         self.max_zoom_level = 5.0
         self.min_zoom_level = 0.5
         self.zoom_increment = 0.2
         
-        self.processed_image_scale = ft.Scale(scale=self.current_zoom_level)
-        self.processed_image_offset = ft.Offset(x=0, y=0)
-
         # UI elements will be initialized in init_ui
         self.original_image_display = None
         self.processed_image_content = None
@@ -98,11 +97,16 @@ class ImageViewerApp:
         self.processed_image_container = ft.Container(
             content=self.processed_image_content,
             width=400, height=400,
-            scale=self.processed_image_scale,  # Use the ft.Scale object for the scale argument
-            offset=self.processed_image_offset, # Use the ft.Offset object for the offset argument
             clip_behavior=ft.ClipBehavior.HARD_EDGE,
+            alignment=ft.alignment.center
         )
-
+        initial_scale_transform = ft.Scale(
+            scale=self.current_zoom_level,
+            alignment=ft.alignment.center 
+        )
+        initial_offset_transform = ft.Offset(x=self.current_offset_x, y=self.current_offset_y)
+        self.processed_image_container.transform = [initial_scale_transform, initial_offset_transform]
+ 
         self.pick_directory_button = ft.ElevatedButton(
             "Pick Image Directory",
             icon="folder_open",
@@ -154,12 +158,26 @@ class ImageViewerApp:
         and updates the Flet page to reflect these changes.
         Logs the new transformation values.
         """
-        self.processed_image_container.transform = [self.processed_image_scale, self.processed_image_offset]
-        current_scale_val = self.processed_image_scale.scale
-        if isinstance(current_scale_val, ft.Control): # Should not happen with direct assignment
-            current_scale_val = current_scale_val.value
-        logging.info(f"Transform updated: Scale={current_scale_val}, Offset=({self.processed_image_offset.x}, {self.processed_image_offset.y})")
-        self.page.update(self.processed_image_container)
+        # Create new transform objects each time
+        new_scale_transform = ft.Scale(
+            scale=self.current_zoom_level,
+            alignment=ft.alignment.center 
+        )
+        new_offset_transform = ft.Offset(x=self.current_offset_x, y=self.current_offset_y)
+        
+        self.processed_image_container.transform = [new_scale_transform, new_offset_transform]
+        
+        logging.info(f"Transform updated: Scale={self.current_zoom_level:.2f}, Offset=({self.current_offset_x:.2f}, {self.current_offset_y:.2f})")
+        
+        if self.processed_image_gesture_detector and self.processed_image_container:
+            # Update the container that has the transform property
+            # and its parent gesture detector.
+            self.page.update(self.processed_image_container)
+        elif self.processed_image_container: # Fallback if gesture detector is None for some reason
+            self.page.update(self.processed_image_container)
+        else:
+            logging.warning("Update_transform: processed_image_container (and possibly gesture_detector) is None. Falling back to global page update.")
+            self.page.update()
 
     def process_current_image(self):
         """
@@ -273,17 +291,20 @@ class ImageViewerApp:
             
             logging.info("Resetting zoom (to 1.0) and pan (to 0,0) for the new processed image.")
             self.current_zoom_level = 1.0
-            self.processed_image_scale.scale = self.current_zoom_level
-            self.processed_image_offset.x = 0.0
-            self.processed_image_offset.y = 0.0
-            self.processed_image_container.transform = [self.processed_image_scale, self.processed_image_offset]
-
+            self.current_offset_x = 0.0
+            self.current_offset_y = 0.0
+            
             self.status_text.value = f"Displaying image {index + 1} of {len(self.image_paths)}: {os.path.basename(image_path)}"
             self.next_image_button.disabled = (index >= len(self.image_paths) - 1)
             
-            self.page.update(self.original_image_display, self.status_text, self.next_image_button, self.processed_image_content, self.processed_image_container)
-            logging.info(f"Original image display updated. Current index: {self.current_image_index}, Path: {image_path}. Next button disabled: {self.next_image_button.disabled}")
+            # Update elements that don't involve the complex transform first
+            self.page.update(self.original_image_display, self.status_text, self.next_image_button, self.processed_image_content)
             
+            # Now apply the transform reset using the centralized method
+            self.update_processed_image_transform()
+            
+            logging.info(f"Original image display updated. Current index: {self.current_image_index}, Path: {image_path}. Next button disabled: {self.next_image_button.disabled}")
+
             self.process_current_image()
         else:
             logging.warning(f"display_image called with invalid index: {index}. Image list length: {len(self.image_paths)}.")
@@ -408,7 +429,6 @@ class ImageViewerApp:
         new_scale = min(self.max_zoom_level, round(self.current_zoom_level + self.zoom_increment, 2))
         if new_scale != self.current_zoom_level:
             self.current_zoom_level = new_scale
-            self.processed_image_scale.scale = self.current_zoom_level
             logging.info(f"Zoom In: Scale changed from {old_scale:.2f} to {self.current_zoom_level:.2f}")
             self.update_processed_image_transform()
         else:
@@ -420,7 +440,6 @@ class ImageViewerApp:
         new_scale = max(self.min_zoom_level, round(self.current_zoom_level - self.zoom_increment, 2))
         if new_scale != self.current_zoom_level:
             self.current_zoom_level = new_scale
-            self.processed_image_scale.scale = self.current_zoom_level
             logging.info(f"Zoom Out: Scale changed from {old_scale:.2f} to {self.current_zoom_level:.2f}")
             self.update_processed_image_transform()
         else:
@@ -442,17 +461,17 @@ class ImageViewerApp:
             f"Current zoom: {self.current_zoom_level:.2f}. Target zoom on click: {fixed_zoom_on_click}."
         )
 
-        old_offset_x, old_offset_y = self.processed_image_offset.x, self.processed_image_offset.y
-        self.processed_image_offset.x = (container_width / 2) - (tap_x_in_container * fixed_zoom_on_click)
-        self.processed_image_offset.y = (container_height / 2) - (tap_y_in_container * fixed_zoom_on_click)
+        old_offset_x, old_offset_y = self.current_offset_x, self.current_offset_y
+        
+        self.current_offset_x = (container_width / 2) - (tap_x_in_container * fixed_zoom_on_click)
+        self.current_offset_y = (container_height / 2) - (tap_y_in_container * fixed_zoom_on_click)
         
         old_scale = self.current_zoom_level
-        self.processed_image_scale.scale = fixed_zoom_on_click
         self.current_zoom_level = fixed_zoom_on_click
         
         logging.info(
             f"Tap zoom/center: Scale changed from {old_scale:.2f} to {self.current_zoom_level:.2f}. "
-            f"Offset changed from ({old_offset_x:.2f}, {old_offset_y:.2f}) to ({self.processed_image_offset.x:.2f}, {self.processed_image_offset.y:.2f})."
+            f"Offset changed from ({old_offset_x:.2f}, {old_offset_y:.2f}) to ({self.current_offset_x:.2f}, {self.current_offset_y:.2f})."
         )
         self.update_processed_image_transform()
 
