@@ -65,7 +65,7 @@ class ImageViewerApp:
         self.current_offset_x = 0.0
         self.current_offset_y = 0.0
         self.max_zoom_level = 5.0
-        self.min_zoom_level = 0.5
+        self.min_zoom_level = 0.01  # Allow very small zooms for large images
         self.zoom_increment = 0.2
         
         # Store PhotoImage objects to prevent garbage collection
@@ -387,8 +387,8 @@ class ImageViewerApp:
                     zoom_w_ratio = canvas_w / img_w
                     zoom_h_ratio = canvas_h / img_h
                     self.current_zoom_level = min(zoom_w_ratio, zoom_h_ratio)
-                    # Apply min/max zoom constraints
-                    self.current_zoom_level = max(self.min_zoom_level, min(self.current_zoom_level, self.max_zoom_level))
+                    # Remove min_zoom_level clamp so image always fits
+                    self.current_zoom_level = min(self.current_zoom_level, self.max_zoom_level)
                     logging.info(f"Initial fit-to-screen zoom calculated: {self.current_zoom_level:.2f}")
 
                     # Calculate centered offsets for this zoom level
@@ -397,6 +397,8 @@ class ImageViewerApp:
                     self.current_offset_x = (canvas_w - scaled_img_w_at_fit) / 2
                     self.current_offset_y = (canvas_h - scaled_img_h_at_fit) / 2
                     logging.info(f"Initial centered offsets: ({self.current_offset_x:.2f}, {self.current_offset_y:.2f})")
+                    # Prevent zooming out further than fit-to-canvas
+                    self.min_zoom_level = self.current_zoom_level
                 else: # Fallback if image/canvas dimensions are zero
                     self.current_zoom_level = 1.0
                     self.current_offset_x = (canvas_w - (img_w if img_w else 0)) / 2 
