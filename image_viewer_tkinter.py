@@ -142,6 +142,9 @@ class ImageViewerApp:
         button_container = ttk.Frame(nav_zoom_frame) # To center buttons
         button_container.pack(anchor=tk.CENTER)
 
+        self.reset_zoom_button = ttk.Button(button_container, text="Reset Zoom", command=self.on_reset_zoom_click)
+        self.reset_zoom_button.pack(side=tk.LEFT, padx=5)
+
         self.zoom_in_button = ttk.Button(button_container, text="Zoom In (+)", command=self.on_zoom_in_click)
         self.zoom_in_button.pack(side=tk.LEFT, padx=5)
 
@@ -536,6 +539,27 @@ class ImageViewerApp:
 
     def on_canvas_button_release(self, event):
         self.processed_image_canvas.config(cursor="")
+
+    def on_reset_zoom_click(self):
+        """Resets zoom and pan so the processed image fits the canvas (fit-to-canvas)."""
+        if self.raw_processed_image_cv is None:
+            return
+        img_h, img_w = self.raw_processed_image_cv.shape[:2]
+        canvas_w = self.processed_image_canvas.winfo_width()
+        canvas_h = self.processed_image_canvas.winfo_height()
+        if img_w > 0 and img_h > 0 and canvas_w > 0 and canvas_h > 0:
+            zoom_w_ratio = canvas_w / img_w
+            zoom_h_ratio = canvas_h / img_h
+            self.current_zoom_level = min(zoom_w_ratio, zoom_h_ratio)
+            self.current_zoom_level = min(self.current_zoom_level, self.max_zoom_level)
+            scaled_img_w_at_fit = int(img_w * self.current_zoom_level)
+            scaled_img_h_at_fit = int(img_h * self.current_zoom_level)
+            self.current_offset_x = (canvas_w - scaled_img_w_at_fit) / 2
+            self.current_offset_y = (canvas_h - scaled_img_h_at_fit) / 2
+            self.min_zoom_level = self.current_zoom_level  # Prevent zooming out further than fit-to-canvas
+            self.update_processed_image_display()
+        else:
+            logging.warning("Reset zoom clicked, but image or canvas dimensions are invalid. Cannot reset zoom.")
 
 def main():
     """
