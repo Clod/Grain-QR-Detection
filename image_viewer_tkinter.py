@@ -331,8 +331,9 @@ class ImageViewerApp:
             self.status_var.set(f"{current_status.replace('Processing: ', '').split(' (')[0]} (ChArUco skipped)")
 
         self.raw_processed_image_cv = processed_img_final
-        self.status_var.set(f"Displaying: {os.path.basename(img_path)} (Processed)")
-        self.update_processed_image_display()
+        # Final status update and display update will be handled by the caller (display_image)
+        # self.status_var.set(f"Displaying: {os.path.basename(img_path)} (Processed)")
+        # self.update_processed_image_display()
         logging.info(f"Finished process_current_image for index: {self.current_image_index}.")
     def display_image(self, index: int):
         """
@@ -370,22 +371,50 @@ class ImageViewerApp:
                 logging.error(f"Error displaying original image {image_path}: {e}", exc_info=True)
                 self.original_image_label.config(image=None, text=f"Error: {os.path.basename(image_path)}")
 
-            # Reset zoom/pan for processed view
-            self.current_zoom_level = 1.0
-            # Center the image initially in the canvas
-            canvas_width = self.processed_image_canvas.winfo_width()
-            canvas_height = self.processed_image_canvas.winfo_height()
-            # We don't know the new image size yet, so process_current_image will set initial offset
-            # For now, set a temporary one or rely on update_processed_image_display to center if small
-            self.current_offset_x = canvas_width / 2 
-            self.current_offset_y = canvas_height / 2
-
             self.status_var.set(f"Displaying image {index + 1} of {len(self.image_paths)}: {os.path.basename(image_path)}")
             self.next_image_button.config(state=tk.NORMAL if index < len(self.image_paths) - 1 else tk.DISABLED)
 
-            self.process_current_image()
+            # Process the image. This sets self.raw_processed_image_cv.
+            # Note: process_current_image no longer calls update_processed_image_display itself.
+            self.process_current_image() 
+
+            if self.raw_processed_image_cv is not None:
+                img_h, img_w = self.raw_processed_image_cv.shape[:2]
+                canvas_w = self.processed_image_canvas.winfo_width()
+                canvas_h = self.processed_image_canvas.winfo_height()
+
+                if img_w > 0 and img_h > 0 and canvas_w > 0 and canvas_h > 0:
+                    zoom_w_ratio = canvas_w / img_w
+                    zoom_h_ratio = canvas_h / img_h
+                    self.current_zoom_level = min(zoom_w_ratio, zoom_h_ratio)
+                    # Apply min/max zoom constraints
+                    self.current_zoom_level = max(self.min_zoom_level, min(self.current_zoom_level, self.max_zoom_level))
+                    logging.info(f"Initial fit-to-screen zoom calculated: {self.current_zoom_level:.2f}")
+
+                    # Calculate centered offsets for this zoom level
+                    scaled_img_w_at_fit = int(img_w * self.current_zoom_level)
+                    scaled_img_h_at_fit = int(img_h * self.current_zoom_level)
+                    self.current_offset_x = (canvas_w - scaled_img_w_at_fit) / 2
+                    self.current_offset_y = (canvas_h - scaled_img_h_at_fit) / 2
+                    logging.info(f"Initial centered offsets: ({self.current_offset_x:.2f}, {self.current_offset_y:.2f})")
+                else: # Fallback if image/canvas dimensions are zero
+                    self.current_zoom_level = 1.0
+                    self.current_offset_x = (canvas_w - (img_w if img_w else 0)) / 2 
+                    self.current_offset_y = (canvas_h - (img_h if img_h else 0)) / 2
+            else: # No raw_processed_image_cv, reset zoom/pan
+                self.current_zoom_level = 1.0
+                self.current_offset_x = 0
+                self.current_offset_y = 0
+            
+            self.update_processed_image_display() # Render with the new zoom/pan
+
+            if self.raw_processed_image_cv is not None:
+                self.status_var.set(f"Displaying: {os.path.basename(image_path)} (Processed)")
+            # If raw_processed_image_cv is None, process_current_image would have set an error status.
         else:
             logging.warning(f"display_image called with invalid index: {index}. Image list length: {len(self.image_paths)}.")
+            self.raw_processed_image_cv = None # Ensure processed view is cleared
+            self.update_processed_image_display()
 
     def pick_directory_clicked(self):
         """
