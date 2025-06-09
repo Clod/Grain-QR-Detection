@@ -1,0 +1,48 @@
+.status-indicator {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background-color: #6c757d;
+    border: 2px solid #fff;
+    box-shadow: 0 0 5px rgba(0,0,0,0.3);
+}
+
+.status-indicator.detected {
+    background-color: #28a745;
+}
+
+.status-indicator.not-detected {
+    background-color: #dc3545;
+}
+
+.status-indicator.unknown {
+    background-color: #6c757d;
+}
+
+#imageContainer {
+    background-color: #f8f9fa;
+    background-image: 
+        linear-gradient(45deg, #e9ecef 25%, transparent 25%), 
+        linear-gradient(-45deg, #e9ecef 25%, transparent 25%), 
+        linear-gradient(45deg, transparent 75%, #e9ecef 75%), 
+        linear-gradient(-45deg, transparent 75%, #e9ecef 75%);
+    background-size: 20px 20px;
+    background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+}
+
+#processedImage {
+    transition: transform 0.1s ease;
+}
+
+#processedImage:active {
+    cursor: grabbing;
+}
+
+.card {
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+}
+
+#qrData {
+    background-color: #f8f9fa;
+    white-space: pre-wrap;
+}
