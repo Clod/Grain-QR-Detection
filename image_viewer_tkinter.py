@@ -294,10 +294,12 @@ class ImageViewerApp:
         if detect_and_draw_qrcodes:
             logging.info("Attempting QR code detection...")
             try:
-                qr_results = detect_and_draw_qrcodes(loaded_image)
-                if qr_results and len(qr_results) > 0 and qr_results[0] is not None:
-                    image_with_qrs = qr_results[0]
-                    # If you need cropped QR images, they are in qr_results[1:]
+                # detect_and_draw_qrcodes returns (list_of_images, list_of_decoded_texts)
+                qr_images, qr_decoded_texts = detect_and_draw_qrcodes(loaded_image)
+                if qr_images and len(qr_images) > 0 and qr_images[0] is not None:
+                    image_with_qrs = qr_images[0]
+                    # qr_decoded_texts contains the decoded strings
+                    # cropped_qr_images = qr_images[1:] # If needed later
                     logging.info("QR code detection successful, image updated.")
                 else:
                     # image_with_qrs remains loaded_image.copy()
@@ -314,14 +316,16 @@ class ImageViewerApp:
         if detect_charuco_board:
             logging.info(f"Attempting ChArUco board detection with params: X={self.CHARUCO_SQUARES_X}, Y={self.CHARUCO_SQUARES_Y}, SqL={self.CHARUCO_SQUARE_LENGTH_MM}, MkL={self.CHARUCO_MARKER_LENGTH_MM}, Dict={self.CHARUCO_DICTIONARY_NAME}")
             try:
-                charuco_result_image = detect_charuco_board(
+                # detect_charuco_board returns (img, charucoCorners, charucoIds, markerCorners, markerIds)
+                charuco_img_output, charuco_corners, charuco_ids, marker_corners, marker_ids = detect_charuco_board(
                     image_with_qrs,
                     self.CHARUCO_SQUARES_X, self.CHARUCO_SQUARES_Y,
                     self.CHARUCO_SQUARE_LENGTH_MM, self.CHARUCO_MARKER_LENGTH_MM,
                     self.CHARUCO_DICTIONARY_NAME, display=False
                 )
-                if charuco_result_image is not None:
-                    processed_img_final = charuco_result_image
+                if charuco_img_output is not None:
+                    processed_img_final = charuco_img_output
+                    # charuco_corners, charuco_ids, marker_corners, marker_ids are available if needed
                     logging.info("ChArUco board detection successful, image updated.")
                 else:
                     logging.warning("ChArUco board detection ran but returned None. Using image from previous step.")

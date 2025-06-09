@@ -11,13 +11,15 @@ def detect_and_draw_qrcodes(image_input):
     Args:
         image_input (str or numpy.ndarray): Path to the input image file or the image itself (as a NumPy array).
     Returns:
-        list[numpy.ndarray] or None: A list of images.
-            - The first image is the input image with QR codes highlighted by
-              green quadrilaterals. If no QR codes are found, it's the
-              original unmodified image.
-            - Subsequent images in the list are the cropped individual QR code
-              regions, if any were detected and successfully cropped.
-            Returns None if the image cannot be read or if input type is invalid.
+        tuple (list[numpy.ndarray], list[str]) or (None, None):
+            - A list of images:
+                - The first image is the input image with QR codes highlighted.
+                  If no QR codes are found, it's the original unmodified image.
+                - Subsequent images are cropped individual QR code regions.
+            - A list of strings, where each string is the decoded text of a
+              corresponding QR code. The order matches the cropped images.
+            Returns (None, None) if the image cannot be read or if input type is invalid.
+            Returns ([original_image], []) if no QR codes are found.
     """
     # Create a QReader instance
     qreader_detector = QReader()
@@ -27,17 +29,18 @@ def detect_and_draw_qrcodes(image_input):
         original_image = cv2.imread(image_input)
         if original_image is None:
             print(f"Error: Could not read image from path: '{image_input}'")
-            return None
+            return None, None
     elif isinstance(image_input, np.ndarray):
         original_image = image_input.copy() # Work on a copy
     else:
         print(f"Error: Invalid input type. Expected string path or NumPy array, got {type(image_input)}.")
-        return None
+        return None, None
 
     # This will be the image we draw on, and the first image returned.
     # If no QRs are found, it remains the original_image. If QRs are found, it becomes a copy.
     image_for_display = original_image
     cropped_qr_images = []
+    decoded_texts_list = []
 
     # QReader expects images in RGB format, OpenCV reads in BGR by default
     # Use the original_image for conversion, as it's pristine.
@@ -61,12 +64,14 @@ def detect_and_draw_qrcodes(image_input):
             # detection_info is a dictionary from qreader.detect(),
             # containing keys like 'bbox_xyxy', 'confidence', 'quad_xy'.
             # 'quad_xy' holds the four corner points of the QR code.
-            decoded_text = None
+            current_decoded_text = None
             try:
                 # Step 2: Decode the text for each detected QR code using its bounding box.
                 # qreader.decode() returns the decoded string or None.
                 # It can accept the entire detection_info dictionary.
-                decoded_text = qreader_detector.decode(image=rgb_img, detection_result=detection_info)
+                current_decoded_text = qreader_detector.decode(image=rgb_img, detection_result=detection_info)
+                if current_decoded_text is not None:
+                    decoded_texts_list.append(current_decoded_text)
             except Exception as e:
                 print(f"  Error decoding QR Code #{i+1} with detection_info: {detection_info}. Error: {e}")
 
@@ -127,20 +132,20 @@ def detect_and_draw_qrcodes(image_input):
                     print(f"  Error drawing polygon for QR Code #{i+1}: {e}. Quad corners: {quad_corners}. Skipping drawing for this QR code.")
                     continue  # Skip drawing for this problematic QR code
 
-                if decoded_text:
-                    print(f"  QR Code #{i+1} decoded text (first 50 chars): {decoded_text[:50]}{'...' if len(decoded_text) > 50 else ''}")
+                if current_decoded_text:
+                    print(f"  QR Code #{i+1} decoded text (first 50 chars): {current_decoded_text[:50]}{'...' if len(current_decoded_text) > 50 else ''}")
                 else:
                     print(f"  QR Code #{i+1} detected (bounding box found), but could not be decoded.")
             else:
                 print(f"  QR Code #{i+1} detected, but 'quad_xy' (corner points) are missing in detection_info: {detection_info}. Cannot draw.")
     else:
-        print(f"No QR codes found in '{image_path}'.")
         image_source_name = image_input if isinstance(image_input, str) else "the provided image array"
         print(f"No QR codes found in {image_source_name}.")
 
-    return [image_for_display] + cropped_qr_images
+    return [image_for_display] + cropped_qr_images, decoded_texts_list
 
 if __name__ == "__main__":
+    # Note: The main block is for demonstration and testing.
     # Define the input and output image paths using absolute paths
     base_dir = "/Users/claudiograsso/Documents/Semillas/code/"
     input_image_filename = "IMG_20250521_185356657.jpg" # Example input file name
@@ -161,9 +166,9 @@ if __name__ == "__main__":
             print(f"Error generating sample QR image '{input_image_abs_path}': {e}")
 
     if os.path.exists(input_image_abs_path):
-        list_of_images = detect_and_draw_qrcodes(input_image_abs_path)
+        list_of_images, decoded_qr_texts = detect_and_draw_qrcodes(input_image_abs_path)
 
-        if list_of_images: # Check if the list is not None and not empty
+        if list_of_images: # Check if the list of images is not None and not empty
             # Get base name (including path) and extension from the input_image_abs_path
             input_path_basename, input_ext = os.path.splitext(input_image_abs_path)
 
@@ -182,6 +187,13 @@ if __name__ == "__main__":
                     cropped_qr_abs_path = f"{input_path_basename}_qr_{i + 1}{input_ext}"
                     cv2.imwrite(cropped_qr_abs_path, cropped_img)
                     print(f"Saved cropped QR image to '{cropped_qr_abs_path}'")
+            
+            if decoded_qr_texts:
+                print("\nDecoded QR Code Texts:")
+                for i, text in enumerate(decoded_qr_texts):
+                    print(f"  QR #{i+1}: {text}")
+            else:
+                print("\nNo QR codes were successfully decoded.")
         else:
             print(f"Failed to process image '{input_image_abs_path}'.")
 
@@ -189,19 +201,23 @@ if __name__ == "__main__":
         print("\n--- Testing with a pre-loaded image ---")
         loaded_img_for_qr = cv2.imread(input_image_abs_path)
         if loaded_img_for_qr is not None:
-            list_from_array = detect_and_draw_qrcodes(loaded_img_for_qr)
-            if list_from_array:
+            images_from_array, texts_from_array = detect_and_draw_qrcodes(loaded_img_for_qr)
+            if images_from_array:
                 input_path_basename, input_ext = os.path.splitext(input_image_abs_path)
                 # Save the main image from array processing
-                main_img_from_array = list_from_array[0]
+                main_img_from_array = images_from_array[0]
                 output_from_array_path = f"{input_path_basename}_qr_all_from_array{input_ext}"
                 cv2.imwrite(output_from_array_path, main_img_from_array)
                 print(f"Output image (from array) with detected QR codes saved to '{output_from_array_path}'")
                 # Save cropped images from array processing
-                if len(list_from_array) > 1:
-                    for i, cropped_img_arr in enumerate(list_from_array[1:]):
+                if len(images_from_array) > 1:
+                    for i, cropped_img_arr in enumerate(images_from_array[1:]):
                         cropped_qr_from_array_path = f"{input_path_basename}_qr_{i + 1}_from_array{input_ext}"
                         cv2.imwrite(cropped_qr_from_array_path, cropped_img_arr)
                         print(f"Saved cropped QR image (from array) to '{cropped_qr_from_array_path}'")
+                if texts_from_array:
+                    print("\nDecoded QR Code Texts (from array):")
+                    for i, text in enumerate(texts_from_array):
+                        print(f"  QR #{i+1}: {text}")
     else:
         print(f"Input image '{input_image_abs_path}' not found. Please create it or modify the path in the script.")

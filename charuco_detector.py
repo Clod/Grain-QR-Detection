@@ -45,11 +45,18 @@ def detect_charuco_board(image_input, squares_x, squares_y, square_length_mm, ma
         display (bool): Whether to display the image with detections.
 
     Note:
-        The function now uses `cv2.aruco.CharucoDetector` for detection, which
+        - The function uses `cv2.aruco.CharucoDetector` for detection, which
         internally handles ArUco marker detection and ChArUco corner interpolation.
+        - Physical lengths (`square_length_mm`, `marker_length_mm`) are converted
+          to meters for `cv2.aruco.CharucoBoard` initialization.
 
     Returns:
-        numpy.ndarray or None: The image with detections drawn, or None if an error occurs.
+        tuple or (None, None, None, None, None):
+            - img (numpy.ndarray or None): The image with detections drawn. None if an error occurs (e.g., image not loaded).
+            - charucoCorners (numpy.ndarray or None): Array of detected ChArUco corners. None if no corners are found or an error occurs.
+            - charucoIds (numpy.ndarray or None): Array of IDs for the detected ChArUco corners. None if no corners are found or an error occurs.
+            - markerCorners (list of numpy.ndarray or None): List of detected ArUco marker corners. None if no markers are found or an error occurs.
+            - markerIds (numpy.ndarray or None): Array of IDs for the detected ArUco markers. None if no markers are found or an error occurs.
     """
 
     # Load the image
@@ -57,19 +64,19 @@ def detect_charuco_board(image_input, squares_x, squares_y, square_length_mm, ma
         img = cv2.imread(image_input)
         if img is None:
             print(f"Error: Could not load image from path: {image_input}")
-            return None
+            return None, None, None, None, None
     elif isinstance(image_input, np.ndarray):
         img = image_input.copy() # Work on a copy to avoid modifying the original array
     else:
         print("Error: Invalid image_input type. Must be a path (str) or a NumPy array.")
-        return None
+        return None, None, None, None, None
 
     # Get the ArUco dictionary
     try:
         dictionary = cv2.aruco.getPredefinedDictionary(getattr(cv2.aruco, dictionary_name))
     except AttributeError:
         print(f"Error: Dictionary '{dictionary_name}' not found. Please check the dictionary name.")
-        return None
+        return None, None, None, None, None
 
     # Create the ChArUco board object (same as in generation)
     board = cv2.aruco.CharucoBoard((squares_x, squares_y), square_length_mm / 1000.0, marker_length_mm / 1000.0, dictionary)
@@ -126,7 +133,7 @@ def detect_charuco_board(image_input, squares_x, squares_y, square_length_mm, ma
         cv2.waitKey(0)
         cv2.destroyAllWindows()
     
-    return img
+    return img, charucoCorners, charucoIds, markerCorners, markerIds
 
 if __name__ == "__main__":
     # --- Configuration for your specific board (MUST MATCH GENERATION SCRIPT) ---
@@ -142,11 +149,11 @@ if __name__ == "__main__":
     # --- Specify the path to your image ---
     # Make sure you have an image of the ChArUco board in the same directory,
     # or provide the full path to the image.
-    image_to_detect = "test_images/charuco_5x5_12markers_5cm.png" 
+    image_to_detect = "test_images/charuco_5x5_12markers_5cm.png"
     #image_to_detect = "test_images/IMG_20250521_184547226.jpg" 
     #image_to_detect = "test_images/IMG_20250521_185417301.jpg"
 
-    img = detect_charuco_board(
+    result = detect_charuco_board(
         image_input=image_to_detect,
         squares_x=squares_x,
         squares_y=squares_y,
@@ -156,18 +163,20 @@ if __name__ == "__main__":
         display=True
     )
     
-    if img is not None:
+    # img is the first element of the tuple returned by detect_charuco_board
+    processed_image = result[0] 
+    if processed_image is not None:
         # If you want to save the result image, uncomment the following line:
-        cv2.imwrite("detected_charuco_board.png", img)
+        cv2.imwrite("detected_charuco_board.png", processed_image)
         print("Saved detected_charuco_board.png")
 
         # Example of passing an already loaded image
         # loaded_img = cv2.imread(image_to_detect)
         # if loaded_img is not None:
         #     print("\nDetecting on a pre-loaded image:")
-        #     img_from_array = detect_charuco_board(
+        #     img_from_array_tuple = detect_charuco_board(
         #         loaded_img, squares_x, squares_y, square_length_mm, marker_length_mm, dictionary_name, display=False
         #     )
-        #     if img_from_array is not None:
-        #         cv2.imwrite("detected_charuco_from_array.png", img_from_array)
+        #     if img_from_array_tuple[0] is not None:
+        #         cv2.imwrite("detected_charuco_from_array.png", img_from_array_tuple[0])
         #         print("Saved detected_charuco_from_array.png")
