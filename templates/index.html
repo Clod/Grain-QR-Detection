@@ -64,17 +64,22 @@
                         <h5>Information</h5>
                     </div>
                     <div class="card-body">
-                        <!-- ChArUco Status -->
-                        <div class="mb-3">
-                            <label class="form-label">ChArUco Status:</label>
-                            <div id="charucoStatus" class="status-indicator mx-auto"></div>
-                        </div>
-                        <hr>
-                        <!-- QR Codes -->
-                        <div>
-                            <label class="form-label">QR Decoded Data:</label>
-                            <div id="qrData" class="border p-2" style="height: 200px; overflow-y: auto; font-size: 0.8em;">
-                                Load an image to see QR data.
+                        <div class="row">
+                            <!-- ChArUco Status -->
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">ChArUco Status:</label>
+                                    <div id="charucoStatus" class="status-indicator mx-auto"></div>
+                                </div>
+                            </div>
+                            <!-- QR Codes -->
+                            <div class="col-md-6">
+                                <div>
+                                    <label class="form-label">QR Decoded Data:</label>
+                                    <div id="qrData" class="border p-2" style="height: 50px; overflow-y: auto; font-size: 0.8em;">
+                                        Load an image to see QR data.
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
