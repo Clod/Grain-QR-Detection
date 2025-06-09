@@ -1,0 +1,21 @@
+.status-indicator {
+    padding: 0.2em 0.4em;
+    border-radius: 0.25rem;
+    font-weight: bold;
+    color: white; /* Default text color, can be overridden */
+}
+
+.status-indicator.detected {
+    background-color: #198754; /* Bootstrap success green */
+    color: white;
+}
+
+.status-indicator.not-detected {
+    background-color: #dc3545; /* Bootstrap danger red */
+    color: white;
+}
+
+.status-indicator.unknown {
+    background-color: #6c757d; /* Bootstrap secondary gray */
+    color: white;
+}
