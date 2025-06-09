@@ -79,6 +79,15 @@ class ImageViewerApp:
         self._canvas_image_x = 0 # Top-left x of image on canvas
         self._canvas_image_y = 0 # Top-left y of image on canvas
 
+        # --- Info Column State ---
+        self.charuco_detected_status = None  # True, False, or None (unknown)
+        self.qr_decoded_texts_list = []
+        self.CHARUCO_STATUS_INDICATOR_SIZE = 20
+        self.CHARUCO_DETECTED_COLOR = "green"
+        self.CHARUCO_NOT_DETECTED_COLOR = "red"
+        self.CHARUCO_UNKNOWN_COLOR = "grey"
+        self.info_column_width = 250 # Width for the new info column
+
         self.init_ui()
 
     def init_ui(self):
@@ -91,14 +100,16 @@ class ImageViewerApp:
 
         # --- Controls Frame ---
         controls_frame = ttk.Frame(main_frame)
-        controls_frame.grid(row=0, column=0, columnspan=2, pady=5, sticky=tk.EW)
+        controls_frame.grid(row=0, column=0, columnspan=3, pady=5, sticky=tk.EW) # Span 3 columns
 
         self.pick_directory_button = ttk.Button(
             controls_frame,
             text="Pick Image Directory",
             command=self.pick_directory_clicked
         )
-        self.pick_directory_button.pack(side=tk.LEFT, padx=5)
+        # Center the button in the controls_frame
+        controls_frame.columnconfigure(0, weight=1)
+        self.pick_directory_button.grid(row=0, column=0, padx=5)
 
         # --- Image Display Frame ---
         images_frame = ttk.Frame(main_frame)
@@ -135,9 +146,49 @@ class ImageViewerApp:
         self.processed_image_canvas.bind("<ButtonRelease-1>", self.on_canvas_button_release)
         self.processed_image_canvas.bind("<Configure>", self.on_canvas_resize)
 
+        # --- Info Column Frame (New) ---
+        info_column_frame = ttk.LabelFrame(main_frame, text="Information", padding="5")
+        info_column_frame.grid(row=1, column=2, padx=5, pady=5, sticky=(tk.N, tk.S, tk.E, tk.W))
+        info_column_frame.rowconfigure(1, weight=0) # Label for ChArUco status
+        info_column_frame.rowconfigure(2, weight=0) # Canvas for ChArUco status
+        info_column_frame.rowconfigure(3, weight=0) # Separator
+        info_column_frame.rowconfigure(4, weight=0) # Label for QR Data
+        info_column_frame.rowconfigure(5, weight=1) # Text area for QR Data
+        info_column_frame.columnconfigure(0, weight=1)
+
+        ttk.Label(info_column_frame, text="ChArUco Status:").grid(row=0, column=0, sticky=tk.W, pady=(0,2))
+        
+        # Determine background color for the canvas to match its ttk parent
+        style = ttk.Style()
+        try:
+            # info_column_frame is a ttk.LabelFrame, so we look up its background
+            canvas_bg_color = style.lookup('TLabelFrame', 'background')
+        except tk.TclError:
+            # Fallback to a general TFrame background if TLabelFrame specific lookup fails
+            canvas_bg_color = style.lookup('TFrame', 'background')
+
+        self.charuco_status_canvas = tk.Canvas(
+            info_column_frame, 
+            width=self.CHARUCO_STATUS_INDICATOR_SIZE + 10, 
+            height=self.CHARUCO_STATUS_INDICATOR_SIZE + 10, 
+            bg=canvas_bg_color, # Use the looked-up background color
+            highlightthickness=0
+        )
+        self.charuco_status_canvas.grid(row=1, column=0, pady=(0,10))
+
+        ttk.Separator(info_column_frame, orient=tk.HORIZONTAL).grid(row=2, column=0, sticky=tk.EW, pady=5)
+        
+        ttk.Label(info_column_frame, text="QR Decoded Data:").grid(row=3, column=0, sticky=tk.W, pady=(0,2))
+        self.qr_data_text = tk.Text(info_column_frame, wrap=tk.WORD, height=10, width=30, state=tk.DISABLED)
+        qr_scrollbar = ttk.Scrollbar(info_column_frame, orient=tk.VERTICAL, command=self.qr_data_text.yview)
+        self.qr_data_text.config(yscrollcommand=qr_scrollbar.set)
+        self.qr_data_text.grid(row=4, column=0, sticky=(tk.N, tk.S, tk.E, tk.W))
+        qr_scrollbar.grid(row=4, column=1, sticky=(tk.N, tk.S))
+        info_column_frame.rowconfigure(4, weight=1) # Make text area expand
+
         # --- Navigation and Zoom Controls Frame ---
         nav_zoom_frame = ttk.Frame(main_frame)
-        nav_zoom_frame.grid(row=2, column=0, columnspan=2, pady=5, sticky=tk.EW)
+        nav_zoom_frame.grid(row=2, column=0, columnspan=3, pady=5, sticky=tk.EW) # Span 3 columns
         
         button_container = ttk.Frame(nav_zoom_frame) # To center buttons
         button_container.pack(anchor=tk.CENTER)
@@ -158,21 +209,62 @@ class ImageViewerApp:
         self.status_var = tk.StringVar()
         self.status_var.set("Please select a directory.")
         status_bar = ttk.Label(main_frame, textvariable=self.status_var, relief=tk.SUNKEN, anchor=tk.W)
-        status_bar.grid(row=3, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.S)) # Stick to S
+        status_bar.grid(row=3, column=0, columnspan=3, sticky=(tk.W, tk.E, tk.S)) # Span 3 columns, Stick to S
 
         # Configure resizing behavior
         main_frame.columnconfigure(0, weight=1)
+        main_frame.columnconfigure(1, weight=1) # Processed image column
+        main_frame.columnconfigure(2, weight=0) # Info column, fixed width or less weight
+        main_frame.grid_columnconfigure(2, minsize=self.info_column_width)
+
         main_frame.rowconfigure(1, weight=1) # Image frame row
         images_frame.rowconfigure(0, weight=1) # Row containing image labels/canvas
 
-        self.root.after(100, self._initial_canvas_setup) # Delay setup that depends on winfo
+        self.root.after(100, self._initial_ui_update) # Delay setup that depends on winfo
         logging.info("Tkinter UI initialized.")
 
-    def _initial_canvas_setup(self):
+    def _initial_ui_update(self):
         """Setup that needs actual canvas dimensions."""
         self._canvas_image_x = self.processed_image_canvas.winfo_width() / 2
         self._canvas_image_y = self.processed_image_canvas.winfo_height() / 2
         self.update_processed_image_display() # Draw placeholder text
+        self.update_info_column() # Draw initial info column state
+
+    def update_info_column(self):
+        """Updates the ChArUco status indicator and QR data text."""
+        # Update ChArUco status indicator
+        self.charuco_status_canvas.delete("all")
+        status_color = self.CHARUCO_UNKNOWN_COLOR
+        if self.charuco_detected_status is True:
+            status_color = self.CHARUCO_DETECTED_COLOR
+        elif self.charuco_detected_status is False:
+            status_color = self.CHARUCO_NOT_DETECTED_COLOR
+        
+        canvas_w = self.charuco_status_canvas.winfo_width()
+        canvas_h = self.charuco_status_canvas.winfo_height()
+        # Ensure canvas is realized, use default size if not
+        canvas_w = canvas_w if canvas_w > 1 else self.CHARUCO_STATUS_INDICATOR_SIZE + 10
+        canvas_h = canvas_h if canvas_h > 1 else self.CHARUCO_STATUS_INDICATOR_SIZE + 10
+
+        x0 = (canvas_w - self.CHARUCO_STATUS_INDICATOR_SIZE) / 2
+        y0 = (canvas_h - self.CHARUCO_STATUS_INDICATOR_SIZE) / 2
+        x1 = x0 + self.CHARUCO_STATUS_INDICATOR_SIZE
+        y1 = y0 + self.CHARUCO_STATUS_INDICATOR_SIZE
+        self.charuco_status_canvas.create_oval(x0, y0, x1, y1, fill=status_color, outline=status_color)
+
+        # Update QR data text
+        self.qr_data_text.config(state=tk.NORMAL)
+        self.qr_data_text.delete("1.0", tk.END)
+        if not detect_and_draw_qrcodes and self.current_image_index != -1 : # Module not available but tried to process
+            self.qr_data_text.insert(tk.END, "QR detection module not available.\n")
+        elif self.qr_decoded_texts_list:
+            for i, text in enumerate(self.qr_decoded_texts_list):
+                self.qr_data_text.insert(tk.END, f"QR #{i+1}: {text}\n---\n")
+        elif self.current_image_index != -1: # Processed, but no QR data
+             self.qr_data_text.insert(tk.END, "No QR codes found or decoded.\n")
+        else: # Not processed yet or no image loaded
+            self.qr_data_text.insert(tk.END, "Load an image to see QR data.\n")
+        self.qr_data_text.config(state=tk.DISABLED)
 
     def on_canvas_resize(self, event):
         if self.raw_processed_image_cv is not None:
@@ -270,11 +362,16 @@ class ImageViewerApp:
         """
         logging.info(f"Starting process_current_image for index: {self.current_image_index}")
 
+        # Reset status for the current processing attempt
+        self.charuco_detected_status = False 
+        self.qr_decoded_texts_list = []
+
         if not (0 <= self.current_image_index < len(self.image_paths)):
             logging.warning(f"process_current_image called with invalid index {self.current_image_index} or empty image_paths. Aborting.")
             self.status_var.set("No image selected or index out of bounds for processing.")
             self.raw_processed_image_cv = None
-            self.update_processed_image_display()
+            # self.charuco_detected_status will remain False, qr_decoded_texts_list empty
+            # display_image will call update_processed_image_display and update_info_column
             return
 
         img_path = self.image_paths[self.current_image_index]
@@ -287,7 +384,7 @@ class ImageViewerApp:
             logging.error(f"cv2.imread failed to load image: {img_path}")
             self.raw_processed_image_cv = None
             self.status_var.set(f"Error: Could not load image file: {os.path.basename(img_path)}")
-            self.update_processed_image_display()
+            # Statuses remain as initialized (False, empty)
             return
 
         image_with_qrs = loaded_image.copy()
@@ -298,8 +395,8 @@ class ImageViewerApp:
                 qr_images, qr_decoded_texts = detect_and_draw_qrcodes(loaded_image)
                 if qr_images and len(qr_images) > 0 and qr_images[0] is not None:
                     image_with_qrs = qr_images[0]
-                    # qr_decoded_texts contains the decoded strings
-                    # cropped_qr_images = qr_images[1:] # If needed later
+                    if qr_decoded_texts:
+                        self.qr_decoded_texts_list = qr_decoded_texts
                     logging.info("QR code detection successful, image updated.")
                 else:
                     # image_with_qrs remains loaded_image.copy()
@@ -325,8 +422,11 @@ class ImageViewerApp:
                 )
                 if charuco_img_output is not None:
                     processed_img_final = charuco_img_output
-                    # charuco_corners, charuco_ids, marker_corners, marker_ids are available if needed
-                    logging.info("ChArUco board detection successful, image updated.")
+                    if charuco_ids is not None and len(charuco_ids) > 0:
+                        self.charuco_detected_status = True
+                        logging.info("ChArUco board detection successful, image updated, status set to True.")
+                    else:
+                        logging.info("ChArUco board detection ran, image updated, but no ChArUco IDs found.")
                 else:
                     logging.warning("ChArUco board detection ran but returned None. Using image from previous step.")
             except Exception as e:
@@ -338,9 +438,6 @@ class ImageViewerApp:
             self.status_var.set(f"{current_status.replace('Processing: ', '').split(' (')[0]} (ChArUco skipped)")
 
         self.raw_processed_image_cv = processed_img_final
-        # Final status update and display update will be handled by the caller (display_image)
-        # self.status_var.set(f"Displaying: {os.path.basename(img_path)} (Processed)")
-        # self.update_processed_image_display()
         logging.info(f"Finished process_current_image for index: {self.current_image_index}.")
     def display_image(self, index: int):
         """
@@ -378,10 +475,7 @@ class ImageViewerApp:
                 logging.error(f"Error displaying original image {image_path}: {e}", exc_info=True)
                 self.original_image_label.config(image=None, text=f"Error: {os.path.basename(image_path)}")
 
-            self.status_var.set(f"Displaying image {index + 1} of {len(self.image_paths)}: {os.path.basename(image_path)}")
-            self.next_image_button.config(state=tk.NORMAL if index < len(self.image_paths) - 1 else tk.DISABLED)
-
-            # Process the image. This sets self.raw_processed_image_cv.
+            # Process the image. This sets self.raw_processed_image_cv, self.charuco_detected_status, self.qr_decoded_texts_list
             # Note: process_current_image no longer calls update_processed_image_display itself.
             self.process_current_image() 
 
@@ -415,15 +509,22 @@ class ImageViewerApp:
                 self.current_offset_x = 0
                 self.current_offset_y = 0
             
-            self.update_processed_image_display() # Render with the new zoom/pan
-
-            if self.raw_processed_image_cv is not None:
+            self.status_var.set(f"Displaying image {index + 1} of {len(self.image_paths)}: {os.path.basename(image_path)}")
+            if self.raw_processed_image_cv is not None: # If processing was successful (even if no detections)
                 self.status_var.set(f"Displaying: {os.path.basename(image_path)} (Processed)")
-            # If raw_processed_image_cv is None, process_current_image would have set an error status.
+            # If raw_processed_image_cv is None, process_current_image would have set an error status or status_var remains.
+            
+            self.next_image_button.config(state=tk.NORMAL if index < len(self.image_paths) - 1 else tk.DISABLED)
+            self.update_processed_image_display() # Render with the new zoom/pan
+            self.update_info_column() # Update the info column based on processing results
+
         else:
             logging.warning(f"display_image called with invalid index: {index}. Image list length: {len(self.image_paths)}.")
             self.raw_processed_image_cv = None # Ensure processed view is cleared
+            self.charuco_detected_status = None # Reset to unknown
+            self.qr_decoded_texts_list = []
             self.update_processed_image_display()
+            self.update_info_column()
 
     def pick_directory_clicked(self):
         """
@@ -457,8 +558,13 @@ class ImageViewerApp:
                     self.status_var.set(f"No image files found in: {directory}")
                     self.original_image_label.config(image=None, text="No images found.")
                     self.original_image_label.image = None # Clear ref
+                    
                     self.raw_processed_image_cv = None
+                    self.charuco_detected_status = None 
+                    self.qr_decoded_texts_list = []
+
                     self.update_processed_image_display()
+                    self.update_info_column()
                     self.next_image_button.config(state=tk.DISABLED)
         else:
             logging.info("Directory selection was cancelled or no path was returned.")
@@ -562,6 +668,7 @@ class ImageViewerApp:
             self.current_offset_y = (canvas_h - scaled_img_h_at_fit) / 2
             self.min_zoom_level = self.current_zoom_level  # Prevent zooming out further than fit-to-canvas
             self.update_processed_image_display()
+            # self.update_info_column() # Info column doesn't change on zoom reset
         else:
             logging.warning("Reset zoom clicked, but image or canvas dimensions are invalid. Cannot reset zoom.")
 
