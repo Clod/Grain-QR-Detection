@@ -93,7 +93,8 @@ def process_image(image_path):
         'original_image': None,
         'processed_image': None,
         'charuco_detected': False,
-        'qr_codes': []
+        'qr_codes': [],
+        'qr_codes_json': []
     }
     
     # Load image

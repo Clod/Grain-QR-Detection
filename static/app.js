@@ -123,7 +123,9 @@ class ImageViewer {
             
             // Update info panel
             this.updateCharucoStatus(result.charuco_detected);
-            this.updateQRData(result.qr_codes);
+            this.updateQRData(result.qr_codes, result.qr_codes_json);
+            console.log("QR Codes:", result.qr_codes); // Log the raw QR codes
+            console.log("QR Codes Decoded:", result.qr_codes_json); // Log the decoded QR codes
             
             // Update navigation
             this.currentIndex = result.current_index;
@@ -177,15 +179,23 @@ class ImageViewer {
         this.charucoStatus.textContent = statusMessage;
     }
     
-    updateQRData(qrCodes) {
+    updateQRData(qrCodes, qrCodesDecoded) {
+        console.log("updateQRData called. qrCodesDecoded:", qrCodesDecoded); // Log the entire decoded array
         if (qrCodes && qrCodes.length > 0) {
-            const qrHtml = qrCodes.map((code, index) => {
+            let qrHtml = qrCodes.map((code, index) => {
                 // Escape HTML special characters from the code data
                 const escapedCode = String(code)
                                     .replace(/&/g, "&amp;")
                                     .replace(/</g, "&lt;")
                                     .replace(/>/g, "&gt;");
-                return `QR #${index + 1}: ${escapedCode}<br>---<br>`;
+                let decodedDataHtml = '';
+                // Log individual decoded item
+                console.log(`Processing QR #${index + 1}. Decoded data:`, qrCodesDecoded ? qrCodesDecoded[index] : 'qrCodesDecoded is undefined/null');
+                
+                if (qrCodesDecoded && typeof qrCodesDecoded[index] !== 'undefined') {
+                    decodedDataHtml = `Decoded: <pre>${JSON.stringify(qrCodesDecoded[index], null, 2)}</pre>`;
+                }
+                return `<div><strong>QR #${index + 1}:</strong> ${escapedCode}<br>${decodedDataHtml}</div><hr>`;
             }).join('');
             this.qrData.innerHTML = qrHtml;
         } else {
