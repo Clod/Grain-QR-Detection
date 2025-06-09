@@ -136,14 +136,14 @@ def display_current_image():
             st.subheader("Original Image")
             try:
                 original_image = Image.open(current_path)
-                st.image(original_image, use_column_width=True)
+                st.image(original_image, use_container_width=True)
             except Exception as e:
                 st.error(f"Error loading original image: {e}")
         
         with col2:
             st.subheader("Processed Image")
             if processed_img is not None:
-                st.image(processed_img, use_column_width=True)
+                st.image(processed_img, use_container_width=True)
             else:
                 st.info("No processed image available")
 

@@ -1,0 +1,5 @@
+[server]
+folderWatchBlacklist = [
+    "/Users/claudiograsso/Documents/Semillas/code/venv/lib/python3.11/site-packages/torch"
+]
+fileWatcherType = "none"
