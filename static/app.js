@@ -150,13 +150,17 @@ class ImageViewer {
     
     updateQRData(qrCodes) {
         if (qrCodes && qrCodes.length > 0) {
-            let qrText = '';
-            qrCodes.forEach((code, index) => {
-                qrText += `QR #${index + 1}: ${code}\n---\n`;
-            });
-            this.qrData.textContent = qrText;
+            const qrHtml = qrCodes.map((code, index) => {
+                // Escape HTML special characters from the code data
+                const escapedCode = String(code)
+                                    .replace(/&/g, "&amp;")
+                                    .replace(/</g, "&lt;")
+                                    .replace(/>/g, "&gt;");
+                return `QR #${index + 1}: ${escapedCode}<br>---<br>`;
+            }).join('');
+            this.qrData.innerHTML = qrHtml;
         } else {
-            this.qrData.textContent = 'No QR codes found or decoded.';
+            this.qrData.innerHTML = 'No QR codes found or decoded.';
         }
     }
     
