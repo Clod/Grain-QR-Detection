@@ -57,6 +57,17 @@ class ImageViewer {
         this.processedImage.addEventListener('contextmenu', (e) => e.preventDefault());
     }
     
+    /**
+     * Handles the file upload process.
+     * When files are selected by the user, this function constructs a FormData object,
+     * sends the files to the '/upload' endpoint via a POST request,
+     * and then processes the JSON response to update the image viewer.
+     *
+     * @param {Event} event - The file input change event.
+     *                        It contains the files selected by the user.
+     * @returns {Promise<void>} A promise that resolves when the file upload and
+     *                          UI update process is complete or an error is handled.
+     */
     async handleFileUpload(event) {
         const files = event.target.files;
         if (files.length === 0) return;
