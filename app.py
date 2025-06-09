@@ -27,13 +27,17 @@ app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a-default-fallback-secret-key-if-not-set') # It's better to use environment variables for secret keys
 
 # Configure Flask's built-in logger
-app.logger.setLevel(logging.INFO) # Set desired logging level
-handler = logging.StreamHandler() # Log to stderr
-handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s'))
-app.logger.addHandler(handler)
+if not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+    # Clear existing handlers to prevent duplicate logging in debug mode
+    app.logger.handlers.clear()
+    app.logger.propagate = False # Optional: prevent messages from propagating to the root logger
+    app.logger.setLevel(logging.INFO) # Set desired logging level
+    handler = logging.StreamHandler() # Log to stderr
+    handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s'))
+    app.logger.addHandler(handler)
 
 app.config['UPLOAD_FOLDER'] = 'uploads'
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max file size
 
 # Ensure upload directory exists
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -46,6 +50,21 @@ CHARUCO_CONFIG = {
     'MARKER_LENGTH_MM': 7.0,
     'DICTIONARY_NAME': "DICT_4X4_100"
 }
+
+@app.errorhandler(413)
+def request_entity_too_large(error):
+    """Custom handler for 413 Request Entity Too Large errors."""
+    content_length = request.headers.get('Content-Length', 'N/A')
+    max_length = app.config.get('MAX_CONTENT_LENGTH', 'N/A')
+    app.logger.error(
+        f"Request entity too large (413) from {request.remote_addr}. "
+        f"Content-Length: {content_length}, Limit: {max_length} bytes. "
+        f"Error details: {error}"
+    )
+    return jsonify({
+        'error': 'Payload too large',
+        'message': f"The uploaded data exceeds the maximum allowed size of {max_length} bytes."
+    }), 413
 
 def cv_image_to_base64(cv_image):
     """Convert OpenCV image to base64 string for web display."""
@@ -145,7 +164,13 @@ def index():
 @app.route('/upload', methods=['POST'])
 def upload_files():
     """Handle multiple file uploads."""
-    app.logger.info(f"Received file upload request from {request.remote_addr}.")
+    app.logger.info(f"Received file upload request from {request.remote_addr}")
+    app.logger.info(f"Request Headers: {request.headers}")
+    app.logger.info(f"Request Form data: {request.form}")
+    app.logger.info(f"Request Files: {request.files}")
+    if request.data:
+        app.logger.info(f"Request Raw Data: {request.data[:200]}...") # Log first 200 bytes if raw data exists
+
     if 'files[]' not in request.files:
         app.logger.warning("Upload request received, but 'files[]' not in request.files.")
         return jsonify({'error': 'No files uploaded'}), 400
@@ -155,8 +180,11 @@ def upload_files():
     
     for file in files:
         if file and file.filename:
+            app.logger.info(f"File details - Name: {file.name}, Filename: {file.filename}, ContentType: {file.content_type}, ContentLength: {file.content_length}")
             filename = secure_filename(file.filename)
             app.logger.info(f"Processing uploaded file: {filename}")
+            # Log more details about the file object if needed, e.g., file.headers
+            # app.logger.info(f"File headers for {filename}: {file.headers}")
             if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif')):
                 filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                 try:
