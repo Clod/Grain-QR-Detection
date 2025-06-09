@@ -115,12 +115,13 @@ def process_image(image_path):
     if detect_and_draw_qrcodes:
         app.logger.info("Attempting QR code detection.")
         try:
-            qr_images, qr_decoded_texts = detect_and_draw_qrcodes(cv_image)
+            qr_images, qr_decoded_texts, qr_decoded_json_objects = detect_and_draw_qrcodes(cv_image)
             if qr_images and len(qr_images) > 0 and qr_images[0] is not None:
                 processed_image = qr_images[0]
                 app.logger.info(f"QR code detection successful. Found {len(qr_decoded_texts)} QR codes.")
                 if qr_decoded_texts:
                     result['qr_codes'] = qr_decoded_texts
+                    result['qr_codes_json'] = qr_decoded_json_objects
             else:
                 app.logger.info("QR code detection ran, but no QR codes found or image not returned.")
         except Exception as e:
