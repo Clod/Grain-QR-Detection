@@ -138,14 +138,32 @@ class ImageViewer {
     }
     
     updateCharucoStatus(detected) {
-        this.charucoStatus.className = 'status-indicator mx-auto ';
+        const { classList } = this.charucoStatus;
+
+        // Remove any previous status-specific classes to ensure a clean state
+        classList.remove('detected', 'not-detected', 'unknown');
+
+        // Ensure base classes are present.
+        // If these are guaranteed by the HTML, this explicit add might be redundant
+        // but ensures they are there if managed dynamically.
+        classList.add('status-indicator', 'mx-auto');
+
+        let statusMessage; // Will hold "Detected", "Not Detected", or "Unknown"
         if (detected === true) {
-            this.charucoStatus.classList.add('detected');
+            classList.add('detected');
+            statusMessage = "Detected";
         } else if (detected === false) {
-            this.charucoStatus.classList.add('not-detected');
+            classList.add('not-detected');
+            statusMessage = "Not Detected";
         } else {
-            this.charucoStatus.classList.add('unknown');
+            // This handles cases where 'detected' is not strictly true/false (e.g., null, undefined).
+            // If 'detected' could be a string ("true") or number (1) meaning true,
+            // the conditional logic above would need to be adjusted.
+            classList.add('unknown');
+            statusMessage = "Unknown";
         }
+        // Set only the dynamic part of the status. "ChArUco Status: " should be static HTML.
+        this.charucoStatus.textContent = statusMessage;
     }
     
     updateQRData(qrCodes) {
