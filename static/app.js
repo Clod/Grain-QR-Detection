@@ -209,7 +209,7 @@ class ImageViewer {
     }
     
     showImageSections() {
-        this.imageSection.style.display = 'block';
+        this.imageSection.style.display = '';
         this.controlsSection.style.display = 'block';
     }
     
