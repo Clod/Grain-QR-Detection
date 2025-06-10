@@ -33,6 +33,17 @@
                             </div>
                             <div class="card-body text-center">
                                 <img id="originalImage" class="img-fluid" style="max-height: 400px;">
+                                <!-- Moved Navigation Controls -->
+                                <div id="controlsSection" style="display: none;"> <!-- Retain ID and initial style for JS -->
+                                    <div class="text-center mt-2">
+                                        <button id="prevBtn" class="btn btn-secondary me-2" disabled>Previous</button>
+                                        <button id="nextBtn" class="btn btn-secondary ms-2" disabled>Next</button>
+                                    </div>
+                                    <div class="text-center mt-2">
+                                        <span id="imageInfo" class="text-muted"></span>
+                                    </div>
+                                </div>
+                                <!-- End Moved Navigation Controls -->
                             </div>
                         </div>
                     </div>
