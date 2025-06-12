@@ -165,10 +165,26 @@ if __name__ == "__main__":
     
     # img is the first element of the tuple returned by detect_charuco_board
     processed_image = result[0] 
+    charucoCorners = result[1]
     if processed_image is not None:
         # If you want to save the result image, uncomment the following line:
         cv2.imwrite("detected_charuco_board.png", processed_image)
         print("Saved detected_charuco_board.png")
+
+        # --- Print pixel/cm equivalence ---
+        if charucoCorners is not None and len(charucoCorners) > 0:
+            # Compute bounding box of detected ChArUco corners
+            pts = charucoCorners.reshape(-1, 2)
+            min_x, min_y = pts.min(axis=0)
+            max_x, max_y = pts.max(axis=0)
+            board_width_px = max_x - min_x
+            board_height_px = max_y - min_y
+            # Use the known board width in cm
+            px_per_cm = board_width_px / board_width_cm
+            print(f"Board width in image: {board_width_px:.2f} px, Real width: {board_width_cm:.2f} cm")
+            print(f"Equivalence: 1 cm = {px_per_cm:.2f} px, 1 px = {1/px_per_cm:.4f} cm")
+        else:
+            print("Cannot compute pixel/cm equivalence: No ChArUco corners detected.")
 
         # Example of passing an already loaded image
         # loaded_img = cv2.imread(image_to_detect)
