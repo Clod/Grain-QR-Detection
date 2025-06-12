@@ -3,6 +3,7 @@ from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 import google.oauth2.credentials
 from googleapiclient.errors import HttpError
+import google.auth.transport.requests # Moved here
 import googleapiclient.http # Added
 import os
 import cv2
@@ -250,7 +251,6 @@ def drive_folders():
             app.logger.info("Google API credentials expired, attempting refresh.")
             try:
                 # Attempt to refresh token
-                import google.auth.transport.requests
                 request = google.auth.transport.requests.Request()
                 credentials.refresh(request)
                 # Update session with new token
@@ -273,7 +273,7 @@ def drive_folders():
         service = build('drive', 'v3', credentials=credentials)
 
         results = service.files().list(
-            q="mimeType='application/vnd.google-apps.folder' and 'trashed'=false",
+            q="mimeType='application/vnd.google-apps.folder' and trashed=false",
             spaces='drive',
             fields='nextPageToken, files(id, name)'
         ).execute()
@@ -332,7 +332,6 @@ def drive_select_folder(folder_id, folder_name):
 
         credentials = google.oauth2.credentials.Credentials(**creds_dict)
         if credentials.expired and credentials.refresh_token:
-            import google.auth.transport.requests
             req = google.auth.transport.requests.Request()
             credentials.refresh(req)
             session['google_credentials'] = {
@@ -343,7 +342,7 @@ def drive_select_folder(folder_id, folder_name):
             app.logger.info("Refreshed Google token for fetching folder content.")
 
         service = build('drive', 'v3', credentials=credentials)
-        query = f"'{folder_id}' in parents and (mimeType='image/jpeg' or mimeType='image/png' or mimeType='image/bmp' or mimeType='image/gif') and 'trashed'=false"
+        query = f"'{folder_id}' in parents and (mimeType='image/jpeg' or mimeType='image/png' or mimeType='image/bmp' or mimeType='image/gif') and trashed=false"
         results = service.files().list(q=query, spaces='drive', fields='files(id, name)').execute()
         items = results.get('files', [])
 
@@ -373,7 +372,6 @@ def drive_select_folder(folder_id, folder_name):
         session['current_drive_image_index'] = -1
 
     return redirect(url_for('index'))
-
 @app.route('/authorize/google')
 def authorize_google():
     state = session.get('state')
@@ -498,7 +496,6 @@ def process_image_route(index):
 
             credentials = google.oauth2.credentials.Credentials(**creds_dict)
             if credentials.expired and credentials.refresh_token:
-                import google.auth.transport.requests
                 req = google.auth.transport.requests.Request()
                 credentials.refresh(req)
                 session['google_credentials'] = {
