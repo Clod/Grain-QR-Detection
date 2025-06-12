@@ -226,28 +226,24 @@ class ImageViewer {
         // The client-side currentIndex and totalImages are updated by loadImage
         // This function can simplify to just fetching the navigation URL
         this.updateStatus(`Navigating ${direction}...`);
+        console.log(`Calling /navigate/${direction}`); // Added for debugging
         fetch(`/navigate/${direction}`)
             .then(response => {
-                if (response.ok && response.redirected) {
-                    // If server redirects, follow it to load the new image via process_image_route
-                    // The page will effectively reload the content for the new image.
-                    // We might need to re-evaluate how loadImage is called if we don't want a full redirect handling.
-                    // For now, assume server redirect to /process/<new_index> which loadImage will handle on page load.
-                    // This might mean the JS state needs to be re-initialized or carefully managed across "pages".
-                    // A better approach for SPA-like behavior is for /navigate to return JSON and then call this.loadImage(newIndex)
-                    window.location.href = response.url; // Follow redirect, will trigger loadImage on the new page content
-                } else if (response.ok) { // Not redirected, but OK (e.g. boundary reached, returned JSON)
+                if (response.ok) {
                     return response.json().then(data => {
+                        console.log("Received data from /navigate:", data); // Added for debugging
                         if(data.error) {
                              this.updateStatus(`Navigation error: ${data.error}`);
-                        } else if (typeof data.index !== 'undefined') {
-                            // If server confirms navigation or staying at boundary
-                            this.loadImage(data.index); // Load the image at the (potentially unchanged) index
-                            this.updateStatus(data.message || `At navigation boundary.`);
+                        } else if (typeof data.current_index !== 'undefined') {
+                            // The backend now returns the full image data, similar to /process/<index>
+                            // We can directly use this data to update the UI, or call loadImage
+                            // For consistency and to ensure all UI updates happen, let's call loadImage.
+                            this.loadImage(data.current_index);
                         }
                     });
                 } else {
                     response.json().then(data => {
+                        console.error("Navigation failed, server response:", data); // Added for debugging
                         this.updateStatus(`Navigation failed: ${data.error || response.statusText}`);
                     });
                 }
