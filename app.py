@@ -14,6 +14,7 @@ import logging
 from PIL import Image
 import io
 import glob
+import os
 
 # Optional imports with error handling
 try:
@@ -27,6 +28,9 @@ try:
 except ImportError:
     logging.error("Failed to import detect_charuco_board")
     detect_charuco_board = None
+
+
+os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a-default-fallback-secret-key-if-not-set') # It's better to use environment variables for secret keys
