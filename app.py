@@ -1,4 +1,9 @@
-from flask import Flask, request, render_template, jsonify, send_file, session, redirect, url_for
+from flask import Flask, request, render_template, jsonify, send_file, session, redirect, url_for, flash
+from google_auth_oauthlib.flow import Flow
+from googleapiclient.discovery import build
+import google.oauth2.credentials
+from googleapiclient.errors import HttpError
+import googleapiclient.http # Added
 import os
 import cv2
 import numpy as np
@@ -38,9 +43,15 @@ if not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
 
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max file size
+app.config['DRIVE_TEMP_FOLDER'] = 'drive_temp_downloads' # Added
 
-# Ensure upload directory exists
+# Ensure directories exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+os.makedirs(app.config['DRIVE_TEMP_FOLDER'], exist_ok=True) # Added
+
+# Google OAuth Configuration
+CLIENT_SECRETS_FILE = 'client_secret.json' # IMPORTANT: This file needs to be obtained from Google Cloud Console
+SCOPES = ['https://www.googleapis.com/auth/drive.metadata.readonly', 'https://www.googleapis.com/auth/drive.readonly']
 
 # ChArUco configuration
 CHARUCO_CONFIG = {
@@ -161,11 +172,249 @@ def process_image(image_path):
 def index():
     """Main page."""
     app.logger.info("Main page '/' accessed.")
-    return render_template('index.html')
+    drive_image_files = session.get('drive_image_files', [])
+    drive_images_count = len(drive_image_files)
+    is_drive_mode = bool(session.get('selected_google_drive_folder_id') and drive_image_files is not None)
+
+    # If in drive mode and no images, or index is bad, try to reset/clarify state
+    if is_drive_mode:
+        current_drive_index = session.get('current_drive_image_index', -1)
+        if not drive_image_files or current_drive_index == -1 : # No images, or explicitly set to no valid image
+             app.logger.info("Drive mode active but no images or invalid index, ensuring clean state for JS.")
+             # This helps JS initialize correctly if user selected an empty folder or an error occurred fetching images.
+        elif current_drive_index >= drive_images_count: # Index out of bounds
+            app.logger.warning(f"Drive index {current_drive_index} out of bounds for {drive_images_count} images. Resetting index.")
+            session['current_drive_image_index'] = 0 if drive_images_count > 0 else -1
+
+
+    return render_template('index.html',
+                           drive_images_count=drive_images_count,
+                           is_drive_mode=is_drive_mode)
+
+@app.route('/login/google')
+def login_google():
+    try:
+        flow = Flow.from_client_secrets_file(
+            CLIENT_SECRETS_FILE,
+            scopes=SCOPES,
+            redirect_uri=url_for('authorize_google', _external=True)
+        )
+        authorization_url, state = flow.authorization_url(
+            access_type='offline',
+            include_granted_scopes='true'
+        )
+        session['state'] = state
+        app.logger.info(f"Redirecting to Google for authorization. State: {state}")
+        return redirect(authorization_url)
+    except FileNotFoundError:
+        app.logger.error(f"Client secrets file '{CLIENT_SECRETS_FILE}' not found.")
+        return render_template('error.html', message=f"OAuth2 client secrets file ({CLIENT_SECRETS_FILE}) not found. Please configure Google API access."), 500
+    except Exception as e:
+        app.logger.error(f"Error during Google login initiation: {e}", exc_info=True)
+        return render_template('error.html', message="An error occurred during Google login."), 500
+
+@app.route('/logout/google')
+def logout_google():
+    session.pop('google_credentials', None)
+    session.pop('state', None)
+    session.pop('selected_google_drive_folder_id', None)
+    session.pop('selected_google_drive_folder_name', None)
+    session.pop('drive_image_files', None) # Added
+    session.pop('current_drive_image_index', None) # Added
+    app.logger.info("User logged out from Google, session cleared for Drive items as well.")
+    flash('You have been logged out from Google.', 'info')
+    return redirect(url_for('index'))
+
+@app.route('/drive/folders')
+def drive_folders():
+    if 'google_credentials' not in session:
+        flash('Please login with Google first.', 'warning')
+        return redirect(url_for('login_google'))
+
+    try:
+        creds_dict = session['google_credentials']
+        # Ensure all required fields are present for Credentials object
+        if not all(k in creds_dict for k in ['token', 'refresh_token', 'token_uri', 'client_id', 'client_secret', 'scopes']):
+            app.logger.error("Stored Google credentials missing required fields.")
+            flash("Your Google session data is corrupted. Please log in again.", "error")
+            session.pop('google_credentials', None) # Clear corrupted creds
+            return redirect(url_for('login_google'))
+
+        credentials = google.oauth2.credentials.Credentials(**creds_dict)
+
+        if credentials.expired and credentials.refresh_token:
+            app.logger.info("Google API credentials expired, attempting refresh.")
+            try:
+                # Attempt to refresh token
+                import google.auth.transport.requests
+                request = google.auth.transport.requests.Request()
+                credentials.refresh(request)
+                # Update session with new token
+                session['google_credentials'] = {
+                    'token': credentials.token,
+                    'refresh_token': credentials.refresh_token,
+                    'token_uri': credentials.token_uri,
+                    'client_id': credentials.client_id,
+                    'client_secret': credentials.client_secret,
+                    'scopes': credentials.scopes
+                }
+                app.logger.info("Google API credentials refreshed successfully.")
+            except Exception as refresh_error:
+                app.logger.error(f"Error refreshing Google API token: {refresh_error}", exc_info=True)
+                flash('Your Google session has expired and could not be refreshed. Please log in again.', 'error')
+                session.pop('google_credentials', None)
+                session.pop('state', None)
+                return redirect(url_for('login_google'))
+
+        service = build('drive', 'v3', credentials=credentials)
+
+        results = service.files().list(
+            q="mimeType='application/vnd.google-apps.folder' and 'trashed'=false",
+            spaces='drive',
+            fields='nextPageToken, files(id, name)'
+        ).execute()
+
+        items = results.get('files', [])
+        app.logger.info(f"Found {len(items)} folders in Google Drive.")
+        return render_template('drive_folders.html', folders=items)
+
+    except HttpError as error:
+        app.logger.error(f"Google Drive API HttpError: {error.resp.status} - {error._get_reason()}", exc_info=True)
+        error_json = error.resp.reason
+        try:
+            error_details = json.loads(error.content).get('error', {})
+            message = error_details.get('message', 'An API error occurred.')
+            if error_details.get('status') == 'PERMISSION_DENIED':
+                message = "Permission denied. Ensure the application has access to Google Drive."
+            elif error.resp.status == 401 or error.resp.status == 403: # Unauthorized or Forbidden
+                 flash('Your Google session is invalid or has expired. Please log in again.', 'error')
+                 session.pop('google_credentials', None)
+                 session.pop('state', None)
+                 return redirect(url_for('login_google'))
+        except json.JSONDecodeError:
+            message = f"An API error occurred: {error_json}"
+
+        return render_template('drive_folders.html', error=message)
+    except Exception as e:
+        app.logger.error(f"Unexpected error listing Google Drive folders: {e}", exc_info=True)
+        return render_template('drive_folders.html', error='An unexpected error occurred while fetching folders.')
+
+@app.route('/drive/select_folder/<folder_id>/<path:folder_name>')
+def drive_select_folder(folder_id, folder_name):
+    if 'google_credentials' not in session:
+        flash('Please login with Google first.', 'warning')
+        return redirect(url_for('login_google'))
+
+    session['selected_google_drive_folder_id'] = folder_id
+    session['selected_google_drive_folder_name'] = folder_name
+    app.logger.info(f"User selected Google Drive folder: ID={folder_id}, Name='{folder_name}'")
+
+    # Clear local file session variables
+    session.pop('image_paths', None)
+    session.pop('current_index', None)
+    app.logger.info("Cleared local image session data after selecting Drive folder.")
+
+    # Fetch image files from the selected folder
+    if 'google_credentials' not in session:
+        flash('Google session ended. Please login again.', 'warning')
+        return redirect(url_for('login_google'))
+    try:
+        creds_dict = session['google_credentials']
+        if not all(k in creds_dict for k in ['token', 'refresh_token', 'token_uri', 'client_id', 'client_secret', 'scopes']):
+            app.logger.error("Stored Google credentials missing required fields when fetching folder content.")
+            flash("Your Google session data is corrupted. Please log in again.", "error")
+            session.pop('google_credentials', None)
+            return redirect(url_for('login_google'))
+
+        credentials = google.oauth2.credentials.Credentials(**creds_dict)
+        if credentials.expired and credentials.refresh_token:
+            import google.auth.transport.requests
+            req = google.auth.transport.requests.Request()
+            credentials.refresh(req)
+            session['google_credentials'] = {
+                'token': credentials.token, 'refresh_token': credentials.refresh_token,
+                'token_uri': credentials.token_uri, 'client_id': credentials.client_id,
+                'client_secret': credentials.client_secret, 'scopes': credentials.scopes
+            }
+            app.logger.info("Refreshed Google token for fetching folder content.")
+
+        service = build('drive', 'v3', credentials=credentials)
+        query = f"'{folder_id}' in parents and (mimeType='image/jpeg' or mimeType='image/png' or mimeType='image/bmp' or mimeType='image/gif') and 'trashed'=false"
+        results = service.files().list(q=query, spaces='drive', fields='files(id, name)').execute()
+        items = results.get('files', [])
+
+        session['drive_image_files'] = [{'id': file['id'], 'name': file['name']} for file in items]
+        if items:
+            session['current_drive_image_index'] = 0
+            flash(f"Selected folder '{folder_name}'. Found {len(items)} images.", 'success')
+            app.logger.info(f"Found {len(items)} images in Drive folder '{folder_name}'.")
+        else:
+            session['current_drive_image_index'] = -1
+            flash(f"Selected folder '{folder_name}'. No images found in this folder.", 'info')
+            app.logger.info(f"No images found in Drive folder '{folder_name}'.")
+
+    except HttpError as error:
+        app.logger.error(f"Google Drive API HttpError while listing images in folder: {error}", exc_info=True)
+        flash(f"Error accessing folder '{folder_name}': {error._get_reason()}", 'danger')
+        if error.resp.status == 401 or error.resp.status == 403:
+             session.pop('google_credentials', None)
+             return redirect(url_for('login_google'))
+        # Keep selected folder ID, but clear images
+        session['drive_image_files'] = []
+        session['current_drive_image_index'] = -1
+    except Exception as e:
+        app.logger.error(f"Unexpected error listing images in Drive folder: {e}", exc_info=True)
+        flash(f"An unexpected error occurred while fetching images from folder '{folder_name}'.", 'danger')
+        session['drive_image_files'] = []
+        session['current_drive_image_index'] = -1
+
+    return redirect(url_for('index'))
+
+@app.route('/authorize/google')
+def authorize_google():
+    state = session.get('state')
+    if not state or state != request.args.get('state'):
+        app.logger.error("State mismatch during Google OAuth callback.")
+        return "Error: State mismatch. Please try logging in again.", 400
+
+    try:
+        flow = Flow.from_client_secrets_file(
+            CLIENT_SECRETS_FILE,
+            scopes=SCOPES,
+            state=state,
+            redirect_uri=url_for('authorize_google', _external=True)
+        )
+        flow.fetch_token(authorization_response=request.url)
+
+        # Store credentials in session
+        credentials = flow.credentials
+        session['google_credentials'] = {
+            'token': credentials.token,
+            'refresh_token': credentials.refresh_token,
+            'token_uri': credentials.token_uri,
+            'client_id': credentials.client_id,
+            'client_secret': credentials.client_secret,
+            'scopes': credentials.scopes
+        }
+        app.logger.info("Successfully fetched Google OAuth token and stored in session.")
+        return redirect(url_for('index')) # Or a 'logged_in_success.html' page
+    except FileNotFoundError:
+        app.logger.error(f"Client secrets file '{CLIENT_SECRETS_FILE}' not found during token fetch.")
+        return render_template('error.html', message=f"OAuth2 client secrets file ({CLIENT_SECRETS_FILE}) not found. Please configure Google API access."), 500
+    except Exception as e:
+        app.logger.error(f"Error fetching Google OAuth token: {e}", exc_info=True)
+        return render_template('error.html', message="Could not fetch Google authentication token. Please try again."), 500
 
 @app.route('/upload', methods=['POST'])
 def upload_files():
     """Handle multiple file uploads."""
+    # Clear Drive session variables if local files are uploaded
+    session.pop('selected_google_drive_folder_id', None)
+    session.pop('selected_google_drive_folder_name', None)
+    session.pop('drive_image_files', None)
+    session.pop('current_drive_image_index', None)
+    app.logger.info("Cleared Google Drive session variables due to local file upload.")
+
     app.logger.info(f"Received file upload request from {request.remote_addr}")
     app.logger.info(f"Request Headers: {request.headers}")
     app.logger.info(f"Request Form data: {request.form}")
@@ -212,49 +461,206 @@ def upload_files():
 
 @app.route('/process/<int:index>')
 def process_image_route(index):
-    """Process image at given index."""
+    """Process image at given index from local or Drive."""
     app.logger.info(f"Processing image request for index: {index}.")
-    image_paths = session.get('image_paths', [])
-    
-    if not (0 <= index < len(image_paths)):
-        app.logger.warning(f"Invalid image index {index} requested. Total images: {len(image_paths)}.")
-        return jsonify({'error': 'Invalid image index'}), 400
-    
-    image_path = os.path.join(app.config['UPLOAD_FOLDER'], image_paths[index])
-    result = process_image(image_path)
-    
-    # Add navigation info
-    result.update({
-        'current_index': index,
-        'total_images': len(image_paths),
-        'filename': image_paths[index],
-        'has_next': index < len(image_paths) - 1,
-        'has_prev': index > 0
-    })
-    
-    session['current_index'] = index
-    app.logger.info(f"Successfully processed image at index {index}: {image_paths[index]}. Returning JSON response.")
-    return jsonify(result)
+
+    if session.get('selected_google_drive_folder_id') and session.get('drive_image_files') is not None:
+        # Google Drive Mode
+        drive_files = session.get('drive_image_files', [])
+        if not (0 <= index < len(drive_files)):
+            app.logger.warning(f"Invalid Drive image index {index} requested. Total Drive images: {len(drive_files)}.")
+            return jsonify({'error': 'Invalid Drive image index'}), 400
+
+        image_info = drive_files[index]
+        file_id = image_info['id']
+        file_name = image_info['name']
+
+        # Ensure filename is secure and not empty
+        secure_file_name = secure_filename(file_name) if file_name else f"unnamed_drive_file_{file_id}"
+        if not secure_file_name: # Handles cases where secure_filename might return empty for odd inputs
+            secure_file_name = f"drive_file_{file_id}"
+
+        temp_image_path = os.path.join(app.config['DRIVE_TEMP_FOLDER'], secure_file_name)
+        app.logger.info(f"Processing Drive file: ID='{file_id}', Name='{file_name}', Temp Path='{temp_image_path}'")
+
+        if 'google_credentials' not in session:
+            flash('Google session ended. Please login again to view Drive images.', 'warning')
+            return jsonify({'error': 'Google session ended', 'redirect': url_for('login_google')}), 401
+
+        try:
+            creds_dict = session['google_credentials']
+            if not all(k in creds_dict for k in ['token', 'refresh_token', 'token_uri', 'client_id', 'client_secret', 'scopes']):
+                raise ValueError("Stored Google credentials missing required fields.")
+
+            credentials = google.oauth2.credentials.Credentials(**creds_dict)
+            if credentials.expired and credentials.refresh_token:
+                import google.auth.transport.requests
+                req = google.auth.transport.requests.Request()
+                credentials.refresh(req)
+                session['google_credentials'] = {
+                    'token': credentials.token, 'refresh_token': credentials.refresh_token,
+                    'token_uri': credentials.token_uri, 'client_id': credentials.client_id,
+                    'client_secret': credentials.client_secret, 'scopes': credentials.scopes
+                }
+                app.logger.info("Refreshed Google token for downloading image.")
+
+            service = build('drive', 'v3', credentials=credentials)
+            drive_request = service.files().get_media(fileId=file_id)
+
+            # Consider deleting previous temp file here if one was tracked
+            # For now, we overwrite if filename is the same, or create new ones.
+
+            with io.FileIO(temp_image_path, 'wb') as fh:
+                downloader = googleapiclient.http.MediaIoBaseDownload(fh, drive_request)
+                done = False
+                while not done:
+                    status, done = downloader.next_chunk()
+                    app.logger.info(f"Download {file_name}: {int(status.progress() * 100)}%.")
+            app.logger.info(f"Successfully downloaded Drive file '{file_name}' to '{temp_image_path}'.")
+
+            result = process_image(temp_image_path)
+            try:
+                result = process_image(temp_image_path)
+                result.update({
+                    'current_index': index,
+                    'total_images': len(drive_files),
+                    'filename': file_name, # Original filename for display
+                    'has_next': index < len(drive_files) - 1,
+                    'has_prev': index > 0,
+                    'source': 'drive'
+                })
+                session['current_drive_image_index'] = index
+                return jsonify(result)
+            finally:
+                if os.path.exists(temp_image_path):
+                    try:
+                        os.remove(temp_image_path)
+                        app.logger.info(f"Successfully deleted temporary Drive file: {temp_image_path}")
+                    except OSError as e_remove:
+                        app.logger.error(f"Error deleting temporary Drive file {temp_image_path}: {e_remove}")
+
+        except HttpError as error:
+            app.logger.error(f"Google Drive API HttpError downloading file '{file_name}': {error.resp.status} - {error._get_reason()}", exc_info=True)
+            # Enhanced error feedback
+            status_code = error.resp.status
+            error_payload = {
+                'error': f"API error accessing file '{file_name}'. Status: {status_code}.",
+                'filename': file_name,
+                'current_index': index,
+                'total_images': len(drive_files),
+                'has_next': index < len(drive_files) - 1,
+                'has_prev': index > 0,
+                'is_api_error': True,
+                'source': 'drive'
+            }
+            if status_code == 404:
+                error_payload['error'] = f"Image '{file_name}' not found on Google Drive (404). It might have been deleted or moved."
+            elif status_code == 403:
+                error_payload['error'] = f"Permission denied for image '{file_name}' on Google Drive (403). Please check its permissions."
+                # Optionally, force re-login for persistent permission issues if token refresh doesn't solve it
+                # session.pop('google_credentials', None)
+                # error_payload['redirect'] = url_for('login_google')
+            elif status_code == 401: # Typically token issues, should be caught by refresh logic, but if not:
+                error_payload['error'] = f"Authentication error for '{file_name}' (401). Your session might be invalid."
+                session.pop('google_credentials', None)
+                error_payload['redirect'] = url_for('login_google')
+
+            flash(error_payload['error'], 'danger') # Flash message for broader visibility
+            return jsonify(error_payload), status_code
+
+        except ValueError as ve: # For credential format errors
+            app.logger.error(f"Credential error processing Drive image: {ve}", exc_info=True)
+            flash("Your Google session data is corrupted. Please log in again.", "error")
+            session.pop('google_credentials', None)
+            return jsonify({'error': 'Corrupted Google session data.', 'redirect': url_for('login_google'), 'is_api_error': True}), 401
+        except Exception as e: # Catch-all for other unexpected errors during Drive processing
+            app.logger.error(f"Unexpected error processing Drive file '{file_name}': {e}", exc_info=True)
+            return jsonify({
+                'error': f"An unexpected error occurred while processing file '{file_name}'.",
+                'filename': file_name,
+                'current_index': index,
+                'total_images': len(drive_files),
+                'has_next': index < len(drive_files) - 1,
+                'has_prev': index > 0,
+                'is_api_error': True,
+                'source': 'drive'
+            }), 500
+        # No finally block here as it's moved up to wrap process_image call
+
+    else:
+        # Local File Mode
+        image_paths = session.get('image_paths', [])
+        if not (0 <= index < len(image_paths)):
+            app.logger.warning(f"Invalid local image index {index} requested. Total local images: {len(image_paths)}.")
+            return jsonify({'error': 'Invalid local image index'}), 400
+
+        image_path = os.path.join(app.config['UPLOAD_FOLDER'], image_paths[index])
+        result = process_image(image_path)
+        result.update({
+            'current_index': index,
+            'total_images': len(image_paths),
+            'filename': image_paths[index],
+            'has_next': index < len(image_paths) - 1,
+            'has_prev': index > 0,
+            'source': 'local'
+        })
+        session['current_index'] = index
+        app.logger.info(f"Successfully processed local image at index {index}: {image_paths[index]}. Returning JSON response.")
+        return jsonify(result)
 
 @app.route('/navigate/<direction>')
 def navigate(direction):
-    """Navigate to next/previous image."""
+    """Navigate to next/previous image, supporting both local and Drive sources."""
     app.logger.info(f"Navigation request received: {direction}.")
-    current_index = session.get('current_index', 0)
-    image_paths = session.get('image_paths', [])
-    app.logger.debug(f"Current index from session: {current_index}, Total images: {len(image_paths)}.")
-    
-    if direction == 'next' and current_index < len(image_paths) - 1:
-        new_index = current_index + 1
-        app.logger.info(f"Navigating to next image. New index: {new_index}.")
-    elif direction == 'prev' and current_index > 0:
-        new_index = current_index - 1
-        app.logger.info(f"Navigating to previous image. New index: {new_index}.")
+
+    if session.get('selected_google_drive_folder_id') and session.get('drive_image_files') is not None:
+        # Google Drive Mode Navigation
+        current_index = session.get('current_drive_image_index', 0)
+        total_images = len(session.get('drive_image_files', []))
+        app.logger.debug(f"Drive Navigation: Current index: {current_index}, Total Drive images: {total_images}.")
+
+        if direction == 'next':
+            new_index = current_index + 1 if current_index < total_images - 1 else current_index
+        elif direction == 'prev':
+            new_index = current_index - 1 if current_index > 0 else current_index
+        else:
+            app.logger.warning(f"Invalid Drive navigation direction: {direction}.")
+            return jsonify({'error': 'Invalid navigation direction'}), 400
+
+        if new_index != current_index:
+            app.logger.info(f"Navigating to Drive image at index: {new_index}.")
+            return redirect(url_for('process_image_route', index=new_index))
+        else:
+            # At boundary, or no change
+            app.logger.info(f"Drive navigation: at boundary or no change. Index: {new_index}")
+            # Redirect to current image to refresh view or indicate no change
+            return redirect(url_for('process_image_route', index=new_index))
+            # Could also return a specific status if no actual navigation occurs:
+            # return jsonify({'message': 'Navigation boundary reached', 'index': new_index}), 200
+
+
     else:
-        app.logger.warning(f"Invalid navigation request: {direction}. Current index: {current_index}, Total images: {len(image_paths)}.")
-        return jsonify({'error': 'Invalid navigation'}), 400
-    
-    return redirect(url_for('process_image_route', index=new_index))
+        # Local File Mode Navigation
+        current_index = session.get('current_index', 0)
+        image_paths = session.get('image_paths', []) # Use image_paths for total_images with local files
+        total_images = len(image_paths)
+        app.logger.debug(f"Local Navigation: Current index: {current_index}, Total local images: {total_images}.")
+
+        if direction == 'next':
+            new_index = current_index + 1 if current_index < total_images - 1 else current_index
+        elif direction == 'prev':
+            new_index = current_index - 1 if current_index > 0 else current_index
+        else:
+            app.logger.warning(f"Invalid local navigation direction: {direction}.")
+            return jsonify({'error': 'Invalid navigation direction'}), 400
+
+        if new_index != current_index:
+            app.logger.info(f"Navigating to local image at index: {new_index}.")
+            return redirect(url_for('process_image_route', index=new_index))
+        else:
+            app.logger.info(f"Local navigation: at boundary or no change. Index: {new_index}")
+            return redirect(url_for('process_image_route', index=new_index))
+
 
 if __name__ == '__main__':
     # Flask's logger is configured above. This basicConfig would be for other modules if needed.
