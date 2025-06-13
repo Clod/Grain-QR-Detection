@@ -40,29 +40,38 @@
             </div>
             <div class="col-12 col-md-8">
                 <!-- Login/Logout and Google Drive Section -->
-                <div class="row mb-3">
-                    <div class="col-12 text-center">
+                <div class="row">
+                    <!-- Left Column: Login Status -->
+                    <div class="col-md-6 text-center mb-3 mb-md-0">
                         {% if session['google_credentials'] %}
-                        <p class="lead">Logged in with Google.</p>
-                        <a href="{{ url_for('logout_google') }}" class="btn btn-warning btn-lg mb-2">Logout from Google</a>
-                        <hr>
-                        <h5 class="mt-3">Google Drive Integration</h5>
-                        {% if session['selected_google_drive_folder_id'] %}
-                        <p>Selected Folder: <strong>{{ session['selected_google_drive_folder_name'] }}</strong> (ID: {{ session['selected_google_drive_folder_id'] }})</p>
-                        <a href="{{ url_for('drive_folders') }}" class="btn btn-info">Change Google Drive Folder</a>
+                            <p class="lead">Logged in with Google.</p>
+                            <a href="{{ url_for('logout_google') }}" class="btn btn-warning btn-lg">Logout from Google</a>
                         {% else %}
-                        <p>No Google Drive folder selected.</p>
-                        <a href="{{ url_for('drive_folders') }}" class="btn btn-primary">List Google Drive Folders</a>
-                        {% endif %}
-                        {% else %}
-                        <a href="{{ url_for('login_google') }}" class="btn btn-danger btn-lg">Login with Google to Use Drive Features</a>
+                            <a href="{{ url_for('login_google') }}" class="btn btn-danger btn-lg">Login with Google to Use Drive Features</a>
                         {% endif %}
                     </div>
-                                    <div>
-                    <label for="driveLinkInput">Or use Google Drive Link:</label> <br/>
-                    <input type="url" id="driveLinkInput" name="drive_link" placeholder="Enter Google Drive folder link" class="form-control mb-2" style="width: 500px; display: inline-block; margin-right: 5px;"> </br>
-                    <button id="submitDriveLinkBtn" class="button">Load from Link</button>
-                </div>
+
+                    <!-- Right Column: Drive Integration and Link -->
+                    <div class="col-md-6">
+                        {% if session['google_credentials'] %}
+                            <div class="text-center mb-3">
+                                <h5 class="mt-md-0">Google Drive Integration</h5>
+                                {% if session['selected_google_drive_folder_id'] %}
+                                    <p>Selected Folder: <strong>{{ session['selected_google_drive_folder_name'] }}</strong> (ID: {{ session['selected_google_drive_folder_id'] }})</p>
+                                    <a href="{{ url_for('drive_folders') }}" class="btn btn-info">Change Google Drive Folder</a>
+                                {% else %}
+                                    <p>No Google Drive folder selected.</p>
+                                    <a href="{{ url_for('drive_folders') }}" class="btn btn-primary">List Google Drive Folders</a>
+                                {% endif %}
+                            </div>
+                            <hr class="d-md-none"> <!-- Horizontal line for small screens if needed -->
+                            <div class="text-center text-md-start"> <!-- text-md-start to align left on medium+ screens -->
+                                <label for="driveLinkInput" class="form-label">Or use Google Drive Link:</label>
+                                <input type="url" id="driveLinkInput" name="drive_link" placeholder="Enter Google Drive folder link" class="form-control mb-2">
+                                <button id="submitDriveLinkBtn" class="btn btn-secondary">Load from Link</button>
+                            </div>
+                        {% endif %}
+                    </div>
                 </div>
             </div>
         </div>
