@@ -309,7 +309,8 @@ def login_google():
         )
         authorization_url, state = flow.authorization_url(
             access_type='offline',
-            include_granted_scopes='true'
+            include_granted_scopes='true',
+            prompt='select_account'  # Add this line
         )
         session['state'] = state
         app.logger.info(f"Redirecting to Google for authorization. State: {state}")
