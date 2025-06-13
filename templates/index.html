@@ -27,51 +27,53 @@
             {% endif %}
         {% endwith %}
 
-        <div class="row" id="sourcesSection">
+        <div class="row mb-4" id="sourcesSection"> <!-- Added mb-4 for bottom margin -->
             <!-- File Upload Section -->
             <div class="col-12 col-md-2">
-                <div class="row mb-4">
+                <div class="row mb-2"> <!-- Reduced margin -->
                     <div class="col-12 text-center">
                         <input type="file" id="fileInput" multiple accept="image/*" class="form-control" style="display: none;">
-                        <button id="uploadBtn" class="btn btn-primary btn-lg">Select Images from Local Drive</button>
+                        <button id="uploadBtn" class="btn btn-primary btn-sm">Select Local Images</button> <!-- Smaller button, shorter text -->
                         <div id="uploadStatus" class="mt-2"></div>
                     </div>
                 </div>
             </div>
             <div class="col-12 col-md-10">
+                <div style="border: 1px solid #ccc; padding: 10px; border-radius: 5px;">
                 <!-- Login/Logout and Google Drive Section -->
-                <div class="row">
+                <div class="row gx-2"> <!-- Reduced gutter between columns -->
                     <!-- Left Column: Login Status -->
-                    <div class="col-md-4 text-center mb-3 mb-md-0">
+                    <div class="col-md-2 text-center mb-2 mb-md-0"> <!-- Reduced margin -->
                         {% if session['google_credentials'] %}
-                            <p class="lead">Logged in with Google.</p>
-                            <a href="{{ url_for('logout_google') }}" class="btn btn-warning btn-lg">Logout from Google</a>
+                            <p class="mb-1 small">Logged in with Google.</p> <!-- Smaller text, reduced margin -->
+                            <a href="{{ url_for('logout_google') }}" class="btn btn-warning btn-sm">Logout Google</a> <!-- Smaller button, shorter text -->
                         {% else %}
-                            <a href="{{ url_for('login_google') }}" class="btn btn-danger btn-lg">Login with Google to Use Drive Features</a>
+                            <a href="{{ url_for('login_google') }}" class="btn btn-danger btn-sm">Login with Google for Drive</a> <!-- Smaller button, shorter text -->
                         {% endif %}
                     </div>
 
                     <!-- Right Column: Drive Integration and Link -->
-                    <div class="col-md-6">
+                    <div class="col-md-10">
                         {% if session['google_credentials'] %}
-                            <div class="text-LEFT mb-3">
-                                <h5 class="mt-md-0">Google Drive Integration</h5>
+                            <div class="text-start mb-2"> <!-- text-start, Reduced margin -->
+                                <h6 class="mt-md-0 mb-1">Google Drive</h6> <!-- Smaller heading, reduced margin, shorter text -->
                                 {% if session['selected_google_drive_folder_id'] %}
-                                    <p>Selected Folder: <strong>{{ session['selected_google_drive_folder_name'] }}</strong> (ID: {{ session['selected_google_drive_folder_id'] }})</p>
-                                    <a href="{{ url_for('drive_folders') }}" class="btn btn-info">Change Google Drive Folder</a>
+                                    <p class="small mb-1">Folder: <strong>{{ session['selected_google_drive_folder_name'] }}</strong> (ID: {{ session['selected_google_drive_folder_id'] }})</p> <!-- Smaller text, reduced margin -->
+                                    <a href="{{ url_for('drive_folders') }}" class="btn btn-info btn-sm">Change Folder</a> <!-- Smaller button, shorter text -->
                                 {% else %}
-                                    <p>No Google Drive folder selected.</p>
-                                    <a href="{{ url_for('drive_folders') }}" class="btn btn-primary">List Google Drive Folders</a>
+                                    <p class="small mb-1">No Drive folder selected.</p> <!-- Smaller text, reduced margin -->
+                                    <a href="{{ url_for('drive_folders') }}" class="btn btn-primary btn-sm">List Folders</a> <!-- Smaller button, shorter text -->
                                 {% endif %}
                             </div>
                             <hr class="d-md-none"> <!-- Horizontal line for small screens if needed -->
                             <div class="text-center text-md-start"> <!-- text-md-start to align left on medium+ screens -->
-                                <label for="driveLinkInput" class="form-label">Or use Google Drive Link:</label>
-                                <input type="url" id="driveLinkInput" name="drive_link" placeholder="Enter Google Drive folder link" class="form-control mb-2">
-                                <button id="submitDriveLinkBtn" class="btn btn-secondary">Load from Link</button>
+                                <label for="driveLinkInput" class="form-label small mb-0">Or Drive Link:</label> <!-- Smaller text, reduced margin, shorter text -->
+                                <input type="url" id="driveLinkInput" name="drive_link" placeholder="Drive folder link" class="form-control form-control-sm mb-1"> <!-- Smaller input, reduced margin, shorter placeholder -->
+                                <button id="submitDriveLinkBtn" class="btn btn-secondary btn-sm">Load Link</button> <!-- Smaller button, shorter text -->
                             </div>
                         {% endif %}
                     </div>
+                </div>
                 </div>
             </div>
         </div>
