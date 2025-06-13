@@ -12,6 +12,32 @@ class ImageViewer {
         
         this.initializeElements();
         this.bindEvents();
+        this.initializeState(); // Call new method
+    }
+
+    initializeState() {
+        // Check global JS variables set by the template
+        if (typeof isDriveModeActive !== 'undefined' && isDriveModeActive &&
+            typeof initialDriveImageCount !== 'undefined' && initialDriveImageCount > 0) {
+
+            this.totalImages = initialDriveImageCount;
+            this.currentIndex = 0; // Assuming Drive mode always starts at index 0 if images exist
+            this.showImageSections();
+            this.updateStatus(`Google Drive folder selected. Found ${this.totalImages} images. Loading first image...`);
+            this.loadImage(0); // Load the first image from Drive
+            console.log("ImageViewer initialized in Drive Mode.");
+        } else if (typeof isDriveModeActive !== 'undefined' && !isDriveModeActive) {
+            // Standard local file mode, or no files selected yet
+            // Optional: Hide image sections if no local files are loaded initially.
+            // this.imageSection.style.display = 'none';
+            // this.controlsSection.style.display = 'none';
+            this.updateStatus('Please select images or a Google Drive folder.');
+            console.log("ImageViewer initialized in Local File Mode or awaiting selection.");
+        } else {
+            // Fallback or initial state before any selection
+            this.updateStatus('Please select images to begin.');
+            console.log("ImageViewer initialized, awaiting user action.");
+        }
     }
     
     initializeElements() {
@@ -30,6 +56,8 @@ class ImageViewer {
         this.prevBtn = document.getElementById('prevBtn');
         this.nextBtn = document.getElementById('nextBtn');
         this.resetZoomBtn = document.getElementById('resetZoomBtn');
+        this.driveLinkInput = document.getElementById('driveLinkInput'); 
+        this.submitDriveLinkBtn = document.getElementById('submitDriveLinkBtn'); 
         this.zoomInBtn = document.getElementById('zoomInBtn');
         this.zoomOutBtn = document.getElementById('zoomOutBtn');
     }
@@ -55,6 +83,11 @@ class ImageViewer {
         
         // Prevent context menu on image
         this.processedImage.addEventListener('contextmenu', (e) => e.preventDefault());
+
+        // Handle Drive link submission
+        if (this.submitDriveLinkBtn) { 
+            this.submitDriveLinkBtn.addEventListener('click', () => this.handleDriveLinkSubmit());
+        }
     }
     
     /**
@@ -86,9 +119,15 @@ class ImageViewer {
             });
             
             const result = await response.json();
+
+            // Explicitly set isDriveModeActive to false for JS context
+            if (typeof isDriveModeActive !== 'undefined') {
+                isDriveModeActive = false;
+                console.log("Switched to Local File Mode due to file upload.");
+            }
             
             if (result.success) {
-                this.images = result.images;
+                this.images = result.images; // This might be less relevant if only relying on server state
                 this.totalImages = result.image_count;
                 this.currentIndex = 0;
                 
@@ -103,17 +142,109 @@ class ImageViewer {
         }
     }
     
+    async handleDriveLinkSubmit() {
+        if (!this.driveLinkInput) {
+            console.error("Drive link input element not found.");
+            this.updateStatus("Error: UI element for Drive link missing.");
+            return;
+        }
+        const driveLink = this.driveLinkInput.value.trim();
+        if (!driveLink) {
+            this.updateStatus('Please enter a Google Drive folder link.');
+            return;
+        }
+
+        this.updateStatus('Processing Google Drive link...');
+
+        try {
+            const response = await fetch('/process_drive_link', { 
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ drive_link: driveLink }),
+            });
+
+            if (!response.ok) {
+                // Try to get more details from the response body if it's not JSON
+                const errorText = await response.text();
+                throw new Error(`Server responded with ${response.status}: ${errorText}`);
+            }
+
+            const result = await response.json(); // Now, this is safer
+
+            if (result.success && result.image_count !== undefined) {
+                if (typeof isDriveModeActive !== 'undefined') {
+                    isDriveModeActive = true;
+                    console.log("ImageViewer switched to Drive Mode via link.");
+                }
+                this.totalImages = result.image_count;
+                this.currentIndex = 0; 
+                this.updateStatus(`Google Drive folder processed. Found ${this.totalImages} images. ${this.totalImages > 0 ? 'Loading first image...' : ''}`);
+                this.showImageSections();
+                this.loadImage(0); 
+            } else {
+                // If server sent success:false in JSON
+                this.updateStatus('Error processing Drive link: ' + (result.error || 'Unknown error from server.'));
+            }
+        } catch (error) {
+            console.error('Full error details:', error); // Log the full error object
+            this.updateStatus('Failed to process Drive link: ' + error.message);
+        }
+    }
+
     async loadImage(index) {
-        if (index < 0 || index >= this.totalImages) return;
-        
-        this.updateStatus(`Processing image ${index + 1} of ${this.totalImages}...`);
+        // For local mode, this check is useful. For Drive mode, server handles index validity.
+        // However, with totalImages now being updated from server response, this check can be more robust.
+        if (!isDriveModeActive && (index < 0 || index >= this.totalImages && this.totalImages > 0)) {
+            console.warn(`Local mode: loadImage called with invalid index ${index} for ${this.totalImages} images. Aborting.`);
+            return;
+        }
+        // If isDriveModeActive, we rely on the server to validate the index for Drive files.
+        // If totalImages is 0 (e.g. empty Drive folder), this will also prevent client-side errors.
+        if (this.totalImages === 0 && index === 0) { // Special case for empty folder, don't try to load index 0
+            this.updateStatus("No images to display.");
+            this.updateNavigation(false, false); // No next/prev
+            return;
+        }
+
+
+        this.updateStatus(`Processing image ${index + 1} of ${this.totalImages > 0 ? this.totalImages : '...'}...`);
         
         try {
             const response = await fetch(`/process/${index}`);
-            const result = await response.json();
+            // It's important to check response.ok before trying to parse as JSON
+            if (!response.ok) {
+                // Attempt to parse error response if server sends JSON for errors
+                try {
+                    const errorResult = await response.json();
+                    this.updateStatus(`Error: ${errorResult.error || response.statusText}`);
+                    if (errorResult.is_api_error) {
+                        this.currentIndex = errorResult.current_index !== undefined ? errorResult.current_index : this.currentIndex;
+                        this.totalImages = errorResult.total_images !== undefined ? errorResult.total_images : this.totalImages;
+                        this.updateNavigation(this.currentIndex > 0, this.currentIndex < this.totalImages - 1);
+                        this.imageInfo.textContent = `Image ${this.currentIndex + 1} of ${this.totalImages}: ${errorResult.filename || 'N/A'} (Error loading)`;
+                    }
+                } catch (e) {
+                    // If error response is not JSON, use statusText
+                    this.updateStatus(`Error: ${response.statusText}`);
+                }
+                return; // Stop processing on error
+            }
+
+            const result = await response.json(); // Now safe to parse as JSON
             
+            // Check for logical error within a 2xx response, if applicable by server design (already done by !response.ok for HTTP errors)
+            // This 'if (result.error)' might be redundant if all errors result in non-ok HTTP status.
+            // However, if server sends 200 OK with an error field in JSON:
             if (result.error) {
                 this.updateStatus('Error: ' + result.error);
+                if (result.is_api_error) { // Handle API error details if present
+                    this.currentIndex = result.current_index !== undefined ? result.current_index : this.currentIndex;
+                    this.totalImages = result.total_images !== undefined ? result.total_images : this.totalImages;
+                    this.updateNavigation(this.currentIndex > 0, this.currentIndex < this.totalImages - 1);
+                    this.imageInfo.textContent = `Image ${this.currentIndex + 1} of ${this.totalImages}: ${result.filename || 'N/A'} (Error loading)`;
+                }
                 return;
             }
             
@@ -121,6 +252,11 @@ class ImageViewer {
             this.originalImage.src = result.original_image;
             this.processedImage.src = result.processed_image;
             
+            // Update totalImages from server response to keep client in sync
+            if (typeof result.total_images !== 'undefined') {
+                this.totalImages = result.total_images;
+            }
+
             // Update info panel
             this.updateCharucoStatus(result.charuco_detected);
             this.updateQRData(result.qr_codes, result.qr_codes_json);
@@ -144,10 +280,36 @@ class ImageViewer {
     }
     
     navigate(direction) {
-        const newIndex = direction === 'next' ? this.currentIndex + 1 : this.currentIndex - 1;
-        if (newIndex >= 0 && newIndex < this.totalImages) {
-            this.loadImage(newIndex);
-        }
+        // Navigation now primarily relies on server-side redirects via fetch
+        // The client-side currentIndex and totalImages are updated by loadImage
+        // This function can simplify to just fetching the navigation URL
+        this.updateStatus(`Navigating ${direction}...`);
+        console.log(`Calling /navigate/${direction}`); // Added for debugging
+        fetch(`/navigate/${direction}`)
+            .then(response => {
+                if (response.ok) {
+                    return response.json().then(data => {
+                        console.log("Received data from /navigate:", data); // Added for debugging
+                        if(data.error) {
+                             this.updateStatus(`Navigation error: ${data.error}`);
+                        } else if (typeof data.current_index !== 'undefined') {
+                            // The backend now returns the full image data, similar to /process/<index>
+                            // We can directly use this data to update the UI, or call loadImage
+                            // For consistency and to ensure all UI updates happen, let's call loadImage.
+                            this.loadImage(data.current_index);
+                        }
+                    });
+                } else {
+                    response.json().then(data => {
+                        console.error("Navigation failed, server response:", data); // Added for debugging
+                        this.updateStatus(`Navigation failed: ${data.error || response.statusText}`);
+                    });
+                }
+            })
+            .catch(error => {
+                console.error('Navigation fetch error:', error);
+                this.updateStatus(`Navigation error: ${error.message}`);
+            });
     }
     
     updateCharucoStatus(detected) {

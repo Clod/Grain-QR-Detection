@@ -1,2 +1,5 @@
-qreader=3.16
-qrcode=8.2
+qreader==3.16
+qrcode==8.2
+google-api-python-client
+google-auth-httplib2
+google-auth-oauthlib
