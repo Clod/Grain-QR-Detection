@@ -29,7 +29,7 @@
 
         <div class="row" id="sourcesSection">
             <!-- File Upload Section -->
-            <div class="col-12 col-md-4">
+            <div class="col-12 col-md-2">
                 <div class="row mb-4">
                     <div class="col-12 text-center">
                         <input type="file" id="fileInput" multiple accept="image/*" class="form-control" style="display: none;">
@@ -38,11 +38,11 @@
                     </div>
                 </div>
             </div>
-            <div class="col-12 col-md-8">
+            <div class="col-12 col-md-10">
                 <!-- Login/Logout and Google Drive Section -->
                 <div class="row">
                     <!-- Left Column: Login Status -->
-                    <div class="col-md-6 text-center mb-3 mb-md-0">
+                    <div class="col-md-4 text-center mb-3 mb-md-0">
                         {% if session['google_credentials'] %}
                             <p class="lead">Logged in with Google.</p>
                             <a href="{{ url_for('logout_google') }}" class="btn btn-warning btn-lg">Logout from Google</a>
@@ -54,7 +54,7 @@
                     <!-- Right Column: Drive Integration and Link -->
                     <div class="col-md-6">
                         {% if session['google_credentials'] %}
-                            <div class="text-center mb-3">
+                            <div class="text-LEFT mb-3">
                                 <h5 class="mt-md-0">Google Drive Integration</h5>
                                 {% if session['selected_google_drive_folder_id'] %}
                                     <p>Selected Folder: <strong>{{ session['selected_google_drive_folder_name'] }}</strong> (ID: {{ session['selected_google_drive_folder_id'] }})</p>
