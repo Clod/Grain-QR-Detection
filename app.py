@@ -16,6 +16,7 @@ from PIL import Image
 import io
 import glob
 import os
+import re # Added for regex operations
 
 # Optional imports with error handling
 try:
@@ -474,6 +475,98 @@ def drive_select_folder(folder_id, folder_name):
         session['current_drive_image_index'] = -1
 
     return redirect(url_for('index'))
+
+def extract_folder_id_from_url(url):
+    """
+    Extracts Google Drive folder ID from common URL formats.
+    """
+    if not url:
+        return None
+    # Handles /folders/ID and /u/X/folders/ID
+    match_path = re.search(r"folders/([-\w]{25,})", url)
+    if match_path:
+        return match_path.group(1)
+    
+    # Handles drive.google.com/open?id=ID or drive.google.com/folderview?id=ID
+    match_id_param = re.search(r"[?&]id=([-\w]{25,})", url)
+    if match_id_param:
+        return match_id_param.group(1)
+        
+    return None
+
+@app.route('/process_drive_link', methods=['POST'])
+def process_drive_link():
+    if 'google_credentials' not in session:
+        app.logger.warning("Attempt to process Drive link without Google credentials.")
+        return jsonify({'success': False, 'error': 'Not logged into Google. Please login first.', 'redirect': url_for('login_google')}), 401
+
+    data = request.get_json()
+    if not data or 'drive_link' not in data:
+        app.logger.warning("Process Drive link request missing 'drive_link' in JSON payload.")
+        return jsonify({'success': False, 'error': 'Drive link not provided.'}), 400
+
+    drive_link = data['drive_link']
+    folder_id = extract_folder_id_from_url(drive_link)
+
+    if not folder_id:
+        app.logger.warning(f"Could not extract folder ID from Drive link: {drive_link}")
+        return jsonify({'success': False, 'error': 'Invalid Google Drive folder link format.'}), 400
+
+    app.logger.info(f"Processing Drive link for folder ID: {folder_id}")
+
+    # Clear local file session variables
+    session.pop('image_paths', None)
+    session.pop('current_index', None)
+    app.logger.info("Cleared local image session data for Drive link processing.")
+
+    try:
+        creds_dict = session['google_credentials']
+        if not all(k in creds_dict for k in ['token', 'refresh_token', 'token_uri', 'client_id', 'client_secret', 'scopes']):
+            app.logger.error("Stored Google credentials missing required fields for process_drive_link.")
+            session.pop('google_credentials', None)
+            return jsonify({'success': False, 'error': 'Google session data corrupted. Please log in again.', 'redirect': url_for('login_google')}), 401
+
+        credentials = google.oauth2.credentials.Credentials(**creds_dict)
+        if credentials.expired and credentials.refresh_token:
+            req = google.auth.transport.requests.Request()
+            credentials.refresh(req)
+            session['google_credentials'] = {
+                'token': credentials.token, 'refresh_token': credentials.refresh_token,
+                'token_uri': credentials.token_uri, 'client_id': credentials.client_id,
+                'client_secret': credentials.client_secret, 'scopes': credentials.scopes
+            }
+            app.logger.info("Refreshed Google token for processing Drive link.")
+
+        service = build('drive', 'v3', credentials=credentials)
+
+        # Get folder name
+        folder_metadata = service.files().get(fileId=folder_id, fields='id, name').execute()
+        folder_name = folder_metadata.get('name', 'Unknown Folder')
+
+        session['selected_google_drive_folder_id'] = folder_id
+        session['selected_google_drive_folder_name'] = folder_name
+
+        query = f"'{folder_id}' in parents and (mimeType='image/jpeg' or mimeType='image/png' or mimeType='image/bmp' or mimeType='image/gif') and trashed=false"
+        results = service.files().list(q=query, spaces='drive', fields='files(id, name)').execute()
+        items = results.get('files', [])
+
+        session['drive_image_files'] = [{'id': file['id'], 'name': file['name']} for file in items]
+        session['current_drive_image_index'] = 0 if items else -1
+
+        app.logger.info(f"Successfully processed Drive link. Folder: '{folder_name}', Images found: {len(items)}")
+        return jsonify({'success': True, 'image_count': len(items), 'folder_name': folder_name})
+
+    except HttpError as error:
+        app.logger.error(f"Google Drive API HttpError processing link for folder ID {folder_id}: {error}", exc_info=True)
+        error_message = f"Error accessing Google Drive: {error._get_reason()}"
+        if error.resp.status == 401 or error.resp.status == 403:
+             session.pop('google_credentials', None) # Force re-login
+             error_message = 'Google session invalid or expired. Please log in again.'
+        return jsonify({'success': False, 'error': error_message, 'redirect': url_for('login_google') if error.resp.status in [401,403] else None}), error.resp.status
+    except Exception as e:
+        app.logger.error(f"Unexpected error processing Drive link for folder ID {folder_id}: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'An unexpected error occurred.'}), 500
+
 @app.route('/authorize/google')
 def authorize_google():
     state = session.get('state')

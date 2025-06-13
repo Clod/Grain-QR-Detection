@@ -56,6 +56,8 @@ class ImageViewer {
         this.prevBtn = document.getElementById('prevBtn');
         this.nextBtn = document.getElementById('nextBtn');
         this.resetZoomBtn = document.getElementById('resetZoomBtn');
+        this.driveLinkInput = document.getElementById('driveLinkInput'); 
+        this.submitDriveLinkBtn = document.getElementById('submitDriveLinkBtn'); 
         this.zoomInBtn = document.getElementById('zoomInBtn');
         this.zoomOutBtn = document.getElementById('zoomOutBtn');
     }
@@ -81,6 +83,11 @@ class ImageViewer {
         
         // Prevent context menu on image
         this.processedImage.addEventListener('contextmenu', (e) => e.preventDefault());
+
+        // Handle Drive link submission
+        if (this.submitDriveLinkBtn) { 
+            this.submitDriveLinkBtn.addEventListener('click', () => this.handleDriveLinkSubmit());
+        }
     }
     
     /**
@@ -135,6 +142,57 @@ class ImageViewer {
         }
     }
     
+    async handleDriveLinkSubmit() {
+        if (!this.driveLinkInput) {
+            console.error("Drive link input element not found.");
+            this.updateStatus("Error: UI element for Drive link missing.");
+            return;
+        }
+        const driveLink = this.driveLinkInput.value.trim();
+        if (!driveLink) {
+            this.updateStatus('Please enter a Google Drive folder link.');
+            return;
+        }
+
+        this.updateStatus('Processing Google Drive link...');
+
+        try {
+            const response = await fetch('/process_drive_link', { 
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ drive_link: driveLink }),
+            });
+
+            if (!response.ok) {
+                // Try to get more details from the response body if it's not JSON
+                const errorText = await response.text();
+                throw new Error(`Server responded with ${response.status}: ${errorText}`);
+            }
+
+            const result = await response.json(); // Now, this is safer
+
+            if (result.success && result.image_count !== undefined) {
+                if (typeof isDriveModeActive !== 'undefined') {
+                    isDriveModeActive = true;
+                    console.log("ImageViewer switched to Drive Mode via link.");
+                }
+                this.totalImages = result.image_count;
+                this.currentIndex = 0; 
+                this.updateStatus(`Google Drive folder processed. Found ${this.totalImages} images. ${this.totalImages > 0 ? 'Loading first image...' : ''}`);
+                this.showImageSections();
+                this.loadImage(0); 
+            } else {
+                // If server sent success:false in JSON
+                this.updateStatus('Error processing Drive link: ' + (result.error || 'Unknown error from server.'));
+            }
+        } catch (error) {
+            console.error('Full error details:', error); // Log the full error object
+            this.updateStatus('Failed to process Drive link: ' + error.message);
+        }
+    }
+
     async loadImage(index) {
         // For local mode, this check is useful. For Drive mode, server handles index validity.
         // However, with totalImages now being updated from server response, this check can be more robust.
