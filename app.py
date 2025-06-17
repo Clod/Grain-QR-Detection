@@ -302,10 +302,12 @@ def index():
 @app.route('/login/google')
 def login_google():
     try:
+        redirect_uri_for_google = url_for('authorize_google', _external=True)
+        app.logger.info(f"Using redirect_uri for Google OAuth: {redirect_uri_for_google}")
         flow = Flow.from_client_secrets_file(
             CLIENT_SECRETS_FILE,
             scopes=SCOPES,
-            redirect_uri=url_for('authorize_google', _external=True)
+            redirect_uri=redirect_uri_for_google
         )
         authorization_url, state = flow.authorization_url(
             access_type='offline',
@@ -313,7 +315,7 @@ def login_google():
             prompt='select_account'  # Add this line
         )
         session['state'] = state
-        app.logger.info(f"Redirecting to Google for authorization. State: {state}")
+        # app.logger.info(f"Redirecting to Google for authorization. State: {state}. Authorization URL: {authorization_url}")
         return redirect(authorization_url)
     except FileNotFoundError:
         app.logger.error(f"Client secrets file '{CLIENT_SECRETS_FILE}' not found.")
@@ -705,4 +707,5 @@ def navigate(direction):
 if __name__ == '__main__':
     # Flask's logger is configured above. This basicConfig would be for other modules if needed.
     app.logger.info("Starting Flask application...")
+    app.logger.info("******* IN DEV ENVIRONMENT USE http://mylocaldomain.com:8000 *****")
     app.run(debug=True, host='0.0.0.0', port=8000)
