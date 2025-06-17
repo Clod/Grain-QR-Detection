@@ -742,6 +742,7 @@ def navigate(direction):
 if __name__ == '__main__':
     # Flask's logger is configured above. This basicConfig would be for other modules if needed.
     app.logger.info("Starting Flask application...")
+    app.logger.info("Build #42")
     # Use the PORT environment variable provided by Cloud Run, defaulting to 8080 for local dev
     port = int(os.environ.get("PORT", 8080))
     app.logger.info("******* IN DEV ENVIRONMENT USE http://mylocaldomain.com:8080 *****")

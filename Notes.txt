@@ -108,12 +108,13 @@ gcloud run deploy image-viewer-deploy \
 
 Aumento la memoria
   gcloud run services update image-viewer-deploy \
-  --memory=1Gi \
+  --memory=2Gi \
+  --cpu=1 \
   --region=us-central1 \
   --project=utn-granos
 
   gcloud run deploy image-viewer-deploy \
-  --memory=1Gi \
+  --memory=2Gi \
   --image=gcr.io/utn-granos/image-viewer:latest \
   --region=us-central1 \
   --update-secrets=GOOGLE_OAUTH_CREDENTIALS=oauth-client:latest \
@@ -121,4 +122,6 @@ Aumento la memoria
   --project=utn-granos
 
 
-
+(venv) (base)  code % docker images gcr.io/utn-granos/image-viewer:latest
+REPOSITORY                       TAG       IMAGE ID       CREATED         SIZE
+gcr.io/utn-granos/image-viewer   latest    63aba189c20a   5 minutes ago   3.41GB

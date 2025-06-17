@@ -62,5 +62,7 @@ EXPOSE 8080
 USER appuser
 
 # Start the dev server (swap for Gunicorn in prod)
-# CMD ["flask", "run", "--port", "8000"]
-CMD ["python", "app.py"]
+# CMD ["python", "app.py"] # Development server
+
+# Use Gunicorn for production. Cloud Run sets the PORT env var (default 8080).
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "1", "--threads", "4", "--worker-class", "gthread", "--timeout", "300", "app:app"]
