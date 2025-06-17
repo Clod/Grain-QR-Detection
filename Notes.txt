@@ -1,0 +1,3 @@
+(venv) (base)  code % docker build -t image-viewer:latest .
+
+docker run --rm -p 8000:8000 image-viewer:latest
