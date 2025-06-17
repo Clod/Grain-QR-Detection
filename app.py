@@ -68,6 +68,43 @@ CHARUCO_CONFIG = {
     'DICTIONARY_NAME': "DICT_4X4_100"
 }
 
+def load_google_flow(scopes, redirect_uri, state=None):
+    """
+    Loads Google OAuth2 Flow.
+    Tries to load from GOOGLE_OAUTH_CREDENTIALS env var (as JSON string or file path).
+    Falls back to CLIENT_SECRETS_FILE if env var is not set or fails.
+    """
+    client_config = None
+    creds_env_var = os.getenv("GOOGLE_OAUTH_CREDENTIALS")
+
+    if creds_env_var:
+        try:
+            # Attempt to parse as direct JSON content
+            client_config = json.loads(creds_env_var)
+            app.logger.info("Loaded Google OAuth credentials from GOOGLE_OAUTH_CREDENTIALS env var (direct JSON).")
+        except json.JSONDecodeError:
+            # If not direct JSON, treat as a file path
+            app.logger.info(f"GOOGLE_OAUTH_CREDENTIALS env var is not direct JSON, treating as path: {creds_env_var}")
+            if os.path.exists(creds_env_var):
+                try:
+                    with open(creds_env_var, 'r') as f:
+                        client_config = json.load(f)
+                    app.logger.info(f"Loaded Google OAuth credentials from file specified in GOOGLE_OAUTH_CREDENTIALS: {creds_env_var}")
+                except Exception as e:
+                    app.logger.error(f"Error reading/parsing credentials file from GOOGLE_OAUTH_CREDENTIALS path '{creds_env_var}': {e}")
+            else:
+                app.logger.warning(f"File specified in GOOGLE_OAUTH_CREDENTIALS env var not found: {creds_env_var}")
+        except Exception as e:
+            app.logger.error(f"Error processing GOOGLE_OAUTH_CREDENTIALS env var: {e}")
+
+    if client_config:
+        return Flow.from_client_config(client_config, scopes=scopes, redirect_uri=redirect_uri, state=state)
+    else:
+        # Fallback to CLIENT_SECRETS_FILE
+        app.logger.info(f"Falling back to CLIENT_SECRETS_FILE: {CLIENT_SECRETS_FILE}")
+        # FileNotFoundError will be raised by from_client_secrets_file if CLIENT_SECRETS_FILE doesn't exist.
+        return Flow.from_client_secrets_file(CLIENT_SECRETS_FILE, scopes=scopes, redirect_uri=redirect_uri, state=state)
+
 @app.errorhandler(413)
 def request_entity_too_large(error):
     """Custom handler for 413 Request Entity Too Large errors."""
@@ -304,11 +341,8 @@ def login_google():
     try:
         redirect_uri_for_google = url_for('authorize_google', _external=True)
         app.logger.info(f"Using redirect_uri for Google OAuth: {redirect_uri_for_google}")
-        flow = Flow.from_client_secrets_file(
-            CLIENT_SECRETS_FILE,
-            scopes=SCOPES,
-            redirect_uri=redirect_uri_for_google
-        )
+        flow = load_google_flow(scopes=SCOPES, redirect_uri=redirect_uri_for_google)
+
         authorization_url, state = flow.authorization_url(
             access_type='offline',
             include_granted_scopes='true',
@@ -318,8 +352,8 @@ def login_google():
         # app.logger.info(f"Redirecting to Google for authorization. State: {state}. Authorization URL: {authorization_url}")
         return redirect(authorization_url)
     except FileNotFoundError:
-        app.logger.error(f"Client secrets file '{CLIENT_SECRETS_FILE}' not found.")
-        return render_template('error.html', message=f"OAuth2 client secrets file ({CLIENT_SECRETS_FILE}) not found. Please configure Google API access."), 500
+        app.logger.error(f"OAuth2 client secrets configuration not found. Neither GOOGLE_OAUTH_CREDENTIALS env var nor '{CLIENT_SECRETS_FILE}' file were successfully loaded.")
+        return render_template('error.html', message=f"OAuth2 client secrets configuration not found. Ensure GOOGLE_OAUTH_CREDENTIALS is set correctly or '{CLIENT_SECRETS_FILE}' is available."), 500
     except Exception as e:
         app.logger.error(f"Error during Google login initiation: {e}", exc_info=True)
         return render_template('error.html', message="An error occurred during Google login."), 500
@@ -578,12 +612,8 @@ def authorize_google():
         return "Error: State mismatch. Please try logging in again.", 400
 
     try:
-        flow = Flow.from_client_secrets_file(
-            CLIENT_SECRETS_FILE,
-            scopes=SCOPES,
-            state=state,
-            redirect_uri=url_for('authorize_google', _external=True)
-        )
+        redirect_uri_for_google = url_for('authorize_google', _external=True)
+        flow = load_google_flow(scopes=SCOPES, redirect_uri=redirect_uri_for_google, state=state)
         flow.fetch_token(authorization_response=request.url)
 
         # Store credentials in session
@@ -599,8 +629,8 @@ def authorize_google():
         app.logger.info("Successfully fetched Google OAuth token and stored in session.")
         return redirect(url_for('index')) # Or a 'logged_in_success.html' page
     except FileNotFoundError:
-        app.logger.error(f"Client secrets file '{CLIENT_SECRETS_FILE}' not found during token fetch.")
-        return render_template('error.html', message=f"OAuth2 client secrets file ({CLIENT_SECRETS_FILE}) not found. Please configure Google API access."), 500
+        app.logger.error(f"OAuth2 client secrets configuration not found during token fetch. Neither GOOGLE_OAUTH_CREDENTIALS env var nor '{CLIENT_SECRETS_FILE}' file were successfully loaded.")
+        return render_template('error.html', message=f"OAuth2 client secrets configuration not found. Ensure GOOGLE_OAUTH_CREDENTIALS is set correctly or '{CLIENT_SECRETS_FILE}' is available."), 500
     except Exception as e:
         app.logger.error(f"Error fetching Google OAuth token: {e}", exc_info=True)
         return render_template('error.html', message="Could not fetch Google authentication token. Please try again."), 500

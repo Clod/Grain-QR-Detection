@@ -4,3 +4,46 @@ docker run --rm -p 8000:8000 image-viewer:latest
 
 
 
+#!/bin/bash
+
+# Example: Fetching a secret from Google Secret Manager
+# This requires gcloud CLI to be authenticated and configured,
+# or using a client library within a small bootstrap script.
+
+# Replace with your actual project ID and secret name/version
+PROJECT_ID="utn-granos"
+SECRET_NAME="oauth-client"
+SECRET_VERSION="latest" # or a specific version number
+
+# Fetch the secret content
+# Ensure the service account running this has 'Secret Manager Secret Accessor' role
+SECRET_CONTENT=$(gcloud secrets versions access "$SECRET_VERSION" --secret="$SECRET_NAME" --project="$PROJECT_ID")
+
+# Check if fetching was successful
+if [ -z "$SECRET_CONTENT" ]; then
+  echo "Error: Failed to fetch secret '$SECRET_NAME' from Google Secret Manager." >&2
+  # Decide on error handling: exit, or let the app try to fallback to a file (if any)
+  # For production, you'd likely want to exit if the secret is critical.
+  exit 1
+fi
+
+# Export it as an environment variable
+export GOOGLE_OAUTH_CREDENTIALS="$SECRET_CONTENT"
+
+echo "GOOGLE_OAUTH_CREDENTIALS environment variable set from Secret Manager."
+
+# Now, run your Flask application
+# Example:
+# gunicorn --bind 0.0.0.0:8080 app:app
+# or
+# python app.py
+
+# (Your application startup command goes here)
+
+
+docker run \
+  -e GOOGLE_OAUTH_CREDENTIALS="$(gcloud secrets versions access "$SECRET_VERSION" \
+        --secret="$SECRET_NAME" --project="$PROJECT_ID")" \
+  -p 8000:8000 image-viewer:latest
+
+
