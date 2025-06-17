@@ -46,4 +46,79 @@ docker run \
         --secret="$SECRET_NAME" --project="$PROJECT_ID")" \
   -p 8000:8000 image-viewer:latest
 
+Grant the Cloud Run Admin role to your user account for this project:
+
+gcloud projects add-iam-policy-binding utn-granos \
+    --member="user:j.claudio.grasso@gmail.com" \
+    --role="roles/run.admin"
+
+
+
+configure Docker to use gcloud as a credential helper. Run the following command:
+
+gcloud auth configure-docker
+
+Build your Docker image for the linux/amd64 platform.
+
+docker build --platform linux/amd64 -t image-viewer:latest .
+
+Tag local Docker image correctly for GCR:
+docker tag image-viewer:latest gcr.io/utn-granos/image-viewer:latest
+
+Push the tagged image to GCR ( Google Container Registry): 
+docker push gcr.io/utn-granos/image-viewer:latest
+
+Grant the Secret Manager Secret Accessor role to this service account for the specified secret using the following command:
+
+gcloud secrets add-iam-policy-binding oauth-client \
+    --member="serviceAccount:924498628857-compute@developer.gserviceaccount.com" \
+    --role="roles/secretmanager.secretAccessor" \
+    --project="utn-granos"
+
+Part	What It Does	Why It Matters
+gcloud run deploy demo	Creates or updates a Cloud Run service named demo in the currently selected project and region (or in the project/region supplied via --project/--region) .	deploy is the single CLI verb that both provisions the service and rolls out new revisions, making it the normal way to publish container changes .
+--image=gcr.io/PROJECT/flask-demo	Tells Cloud Run which container image to run—here, flask-demo stored in Artifact Registry or Container Registry under PROJECT .	The image must be accessible to Cloud Run’s runtime service account; this flag pins the exact application code and dependencies .
+--update-secrets=GOOGLE_OAUTH_CREDENTIALS=oauth-client:latest	Instructs Cloud Run to inject a Secret Manager secret into the service at deploy time . The syntax is ENV_VAR=SECRET_NAME:VERSION; Cloud Run will: 1. Grant the revision permission to access the secret version, 2. Mount the secret value as the environment variable GOOGLE_OAUTH_CREDENTIALS inside each container instance .	‑ Keeps sensitive credentials out of the Docker image and source control - Enables rotation by adding new secret versions; the service automatically receives the version tag (latest) at startup without redeploying .
+
+gcloud run deploy image-viewer-deploy \
+  --image=gcr.io/utn-granos/image-viewer:latest \
+  --region=us-central1 \
+  --update-secrets=GOOGLE_OAUTH_CREDENTIALS=oauth-client:latest
+
+Grant access only to authorized users:
+Allow unauthenticated invocations to [image-viewer-deploy] (y/N)?  y
+
+
+After changing port from 8000 to 8080 in app.py
+
+# Rebuild the image
+docker build --platform linux/amd64 -t image-viewer:latest .
+
+# Tag it for GCR
+docker tag image-viewer:latest gcr.io/utn-granos/image-viewer:latest
+
+# Push to GCR
+docker push gcr.io/utn-granos/image-viewer:latest
+
+# Deploy to Cloud Run
+gcloud run deploy image-viewer-deploy \
+  --image=gcr.io/utn-granos/image-viewer:latest \
+  --region=us-central1 \
+  --update-secrets=GOOGLE_OAUTH_CREDENTIALS=oauth-client:latest
+
+Aumento la memoria
+  gcloud run services update image-viewer-deploy \
+  --memory=1Gi \
+  --region=us-central1 \
+  --project=utn-granos
+
+  gcloud run deploy image-viewer-deploy \
+  --memory=1Gi \
+  --image=gcr.io/utn-granos/image-viewer:latest \
+  --region=us-central1 \
+  --update-secrets=GOOGLE_OAUTH_CREDENTIALS=oauth-client:latest \
+  --allow-unauthenticated \
+  --project=utn-granos
+
+
 

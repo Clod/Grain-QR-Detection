@@ -16,6 +16,7 @@ from PIL import Image
 import io
 import glob
 import os
+from werkzeug.middleware.proxy_fix import ProxyFix # Added ProxyFix
 import re # Added for regex operations
 
 # Optional imports with error handling
@@ -36,6 +37,10 @@ os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'a-default-fallback-secret-key-if-not-set') # It's better to use environment variables for secret keys
+
+# If app is behind one proxy (e.g., Cloud Run's frontend)
+# This will tell Flask to trust X-Forwarded-Proto, X-Forwarded-Host, etc.
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
 # Configure Flask's built-in logger
 if not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
@@ -737,5 +742,7 @@ def navigate(direction):
 if __name__ == '__main__':
     # Flask's logger is configured above. This basicConfig would be for other modules if needed.
     app.logger.info("Starting Flask application...")
-    app.logger.info("******* IN DEV ENVIRONMENT USE http://mylocaldomain.com:8000 *****")
-    app.run(debug=True, host='0.0.0.0', port=8000)
+    # Use the PORT environment variable provided by Cloud Run, defaulting to 8080 for local dev
+    port = int(os.environ.get("PORT", 8080))
+    app.logger.info("******* IN DEV ENVIRONMENT USE http://mylocaldomain.com:8080 *****")
+    app.run(debug=False, host='0.0.0.0', port=port)

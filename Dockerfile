@@ -56,10 +56,11 @@ ENV YOLO_CONFIG_DIR=/home/appuser/.config/Ultralytics
 ENV FLASK_RUN_HOST=0.0.0.0
 
 # Expose the port your app listens on
-EXPOSE 8000
+EXPOSE 8080
 
 # Switch to the non-root user
 USER appuser
 
 # Start the dev server (swap for Gunicorn in prod)
-CMD ["flask", "run", "--port", "8000"]
+# CMD ["flask", "run", "--port", "8000"]
+CMD ["python", "app.py"]
