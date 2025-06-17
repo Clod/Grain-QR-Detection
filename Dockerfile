@@ -25,6 +25,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy source code last (so code changes don’t bust earlier layers)
 COPY static /app/static
 COPY templates /app/templates
+COPY detect_and_draw_qr.py /app/detect_and_draw_qr.py
+COPY charuco_detector.py /app/charuco_detector.py
 COPY app.py /app/app.py
 
 # Change ownership of the app directory to the non-root user
