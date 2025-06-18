@@ -21,13 +21,13 @@ import re # Added for regex operations
 
 # Optional imports with error handling
 try:
-    from detect_and_draw_qr import detect_and_draw_qrcodes
+    from utils.detect_and_draw_qr import detect_and_draw_qrcodes
 except ImportError:
     logging.error("Failed to import detect_and_draw_qrcodes from detect_and_draw_qr. QR detection will be skipped.")
     detect_and_draw_qrcodes = None
 
 try:
-    from charuco_detector import detect_charuco_board
+    from utils.charuco_detector import detect_charuco_board
 except ImportError:
     logging.error("Failed to import detect_charuco_board")
     detect_charuco_board = None

@@ -36,14 +36,15 @@ RUN python -c "from qreader import QReader; print('Attempting to instantiate QRe
 # Copy source code last (so code changes don’t bust earlier layers)
 COPY static /app/static
 COPY templates /app/templates
-COPY detect_and_draw_qr.py /app/detect_and_draw_qr.py
-COPY charuco_detector.py /app/charuco_detector.py
+# COPY detect_and_draw_qr.py /app/detect_and_draw_qr.py
+# COPY charuco_detector.py /app/charuco_detector.py
+COPY utils/ /app/utils/
 COPY app.py /app/app.py
 
 # Diagnostic step: try to import the module and then the function during build
 # This will show a detailed traceback if the import fails.
-RUN python -c "import detect_and_draw_qr; print('Successfully imported detect_and_draw_qr module')"
-RUN python -c "from detect_and_draw_qr import detect_and_draw_qrcodes; print('Successfully imported detect_and_draw_qrcodes function')"
+RUN python -c "import utils.detect_and_draw_qr; print('Successfully imported detect_and_draw_qr module')"
+RUN python -c "from utils.detect_and_draw_qr import detect_and_draw_qrcodes; print('Successfully imported detect_and_draw_qrcodes function')"
 
 # Change ownership of the app directory to the non-root user
 RUN chown -R appuser:appgroup /app

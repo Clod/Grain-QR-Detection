@@ -1,6 +1,6 @@
-(venv) (base)  code % docker build -t image-viewer:latest .
+(venv) (base)  code % docker build -t image-viewer-mac:latest .
 
-docker run --rm -p 8000:8000 image-viewer:latest
+docker run --rm -p 8080:8080 image-viewer-mac:latest
 
 
 
