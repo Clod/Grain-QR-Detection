@@ -1,69 +1,80 @@
-# Stage 1 – application image
-FROM python:3.11-slim-bookworm
+# Stage 1: Builder
+# This stage installs Python dependencies into a virtual environment
+# and pre-downloads necessary models to keep the final image clean.
+FROM python:3.11-slim-bookworm AS builder
 
-# Update package index, upgrade existing packages, install dependencies, and clean up
-# Added libsm6, libxext6, libxrender1 as potential missing dependencies for opencv-python-headless
+# Prevent Python from writing .pyc files and buffer logs
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+
+# Install OS dependencies required by opencv-python and pyzbar (dependencies of qreader)
+# before installing Python packages. This is needed for the model pre-download step.
 RUN apt-get update && \
-    apt-get upgrade -y && \
     apt-get install -y --no-install-recommends \
         libgl1-mesa-glx \
         libglib2.0-0 \
         libsm6 \
         libxext6 \
         libxrender1 \
-        libzbar0 && \
+        libzbar0 \
+    && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Prevent Python byte-code files and enable unbuffered logs
+# Install dependencies first to leverage Docker's layer caching.
+WORKDIR /app
+COPY requirements.txt .
+
+# Create a virtual environment and install packages into it.
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Pre-download QReader models. They will be stored within the venv.
+RUN python -c "from qreader import QReader; print('Pre-downloading QReader models...'); QReader(); print('Model download complete.')"
+
+
+# Stage 2: Final Application Image
+# This stage builds the final image using the artifacts from the builder stage.
+FROM python:3.11-slim-bookworm
+
+# Prevent Python from writing .pyc files and buffer logs
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 
-# Create work directory
-WORKDIR /app
+# Install only essential runtime OS dependencies.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        libgl1-mesa-glx \
+        libglib2.0-0 \
+        libsm6 \
+        libxext6 \
+        libxrender1 \
+        libzbar0 \
+    && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
-# Create a non-root user and group
+# Create a non-root user and group for enhanced security.
 RUN groupadd --gid 1001 appgroup && \
     useradd --uid 1001 --gid 1001 --shell /bin/bash --create-home appuser
 
-# Install build dependencies first to leverage cache
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy the virtual environment with all dependencies from the builder stage.
+COPY --from=builder /opt/venv /opt/venv
 
-# Pre-download QReader models (as root) to prevent permission issues when run as appuser.
-# QReader's QRDetector downloads models to its site-packages subdirectory.
-RUN python -c "from qreader import QReader; print('Attempting to instantiate QReader to pre-download models...'); QReader(); print('QReader instantiated, models should be downloaded.')"
+# Set the PATH to include the virtual environment's binaries.
+ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy source code last (so code changes don’t bust earlier layers)
-COPY static /app/static
-COPY templates /app/templates
-# COPY detect_and_draw_qr.py /app/detect_and_draw_qr.py
-# COPY charuco_detector.py /app/charuco_detector.py
-COPY utils/ /app/utils/
-COPY app.py /app/app.py
-
-# Diagnostic step: try to import the module and then the function during build
-# This will show a detailed traceback if the import fails.
-RUN python -c "import utils.detect_and_draw_qr; print('Successfully imported detect_and_draw_qr module')"
-RUN python -c "from utils.detect_and_draw_qr import detect_and_draw_qrcodes; print('Successfully imported detect_and_draw_qrcodes function')"
-
-# Change ownership of the app directory to the non-root user
-RUN chown -R appuser:appgroup /app
+# Create and set the working directory.
+WORKDIR /app
+# Copy application code from the build context. Assumes a .dockerignore file is present.
+COPY --chown=appuser:appgroup . .
 
 # Set environment variable for Ultralytics config to be in user's home.
-# This should allow Ultralytics (a dependency of qreader) to write its config without permission errors.
 ENV YOLO_CONFIG_DIR=/home/appuser/.config/Ultralytics
 
-# Tell Flask to listen on all interfaces
-ENV FLASK_RUN_HOST=0.0.0.0
-
-# Expose the port your app listens on
 EXPOSE 8080
 
 # Switch to the non-root user
 USER appuser
 
-# Start the dev server (swap for Gunicorn in prod)
-# CMD ["python", "app.py"] # Development server
-
-# Use Gunicorn for production. Cloud Run sets the PORT env var (default 8080).
+# Use Gunicorn for production.
 CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "1", "--threads", "4", "--worker-class", "gthread", "--timeout", "300", "app:app"]

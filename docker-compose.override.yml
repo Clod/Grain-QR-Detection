@@ -1,0 +1,19 @@
+# docker-compose.override.yml
+# This file contains configuration specific to local development on an ARM Mac.
+# It is automatically merged with docker-compose.yml by Docker Compose.
+
+services:
+  ftp-server:
+    # For local development on an ARM-based Mac (M1/M2), we override the
+    # base service definition to use an arm64-specific image. This provides
+    # native performance and bypasses the persistent Docker Hub pull issues.
+    image: dotkevinwong/vsftpd-arm
+
+  flask-app:
+    # For local development on an ARM-based Mac (M1/M2), build and run
+    # a native arm64 image for significantly better performance.
+    platform: linux/arm64
+    # Override the Dockerfile's CMD to enable Gunicorn's live-reloading for development.
+    command: >
+      gunicorn --bind 0.0.0.0:8080 --workers 1 --threads 4 --worker-class gthread
+      --timeout 300 --reload app:app

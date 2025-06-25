@@ -1,0 +1,19 @@
+# Ignore files related to version control
+.git
+.gitignore
+
+# Ignore Docker related files from the context
+Dockerfile
+.dockerignore
+
+# Ignore Python specific files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv
+venv
+
+# Ignore environment files and logs
+.env
+*.log

@@ -6,8 +6,9 @@
 #  % docker compose down
 services:
   ftp-server:
+    # Use a standard amd64-compatible image for the base configuration.
+    # This will be overridden for local ARM development by docker-compose.override.yml.
     image: fauria/vsftpd:latest
-    platform: linux/amd64 # Specify platform for Apple Silicon (M1/M2) compatibility
     container_name: image-viewer-ftp-server
     ports:
       - "21:21"
@@ -26,7 +27,6 @@ services:
     restart: always
 
   flask-app:
-    platform: linux/amd64 # Match platform for consistency and Mac compatibility
     build:
       context: ./flask_app
     container_name: image-viewer-flask-app
@@ -37,11 +37,9 @@ services:
       # Mount the application code for live-reloading during development
       - ./flask_app:/app
       # Mount the shared volume for FTP data
-      - shared_ftp_data:/app/shared_data # Mount the SAME named volume
-    # Override the Dockerfile's CMD to enable live-reloading for development
-    command: >
-      gunicorn --bind 0.0.0.0:8080 --workers 1 --threads 4 --worker-class gthread
-      --timeout 300 --reload app:app
+      - shared_ftp_data:/app/shared_data
+    # The command is now inherited from the Dockerfile's CMD.
+    # Development-specific overrides will be in docker-compose.override.yml.
     restart: always
     depends_on:
       - ftp-server # Optional: ensures ftp-server starts before flask-app, though not strictly required for volume sharing
