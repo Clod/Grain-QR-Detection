@@ -1,3 +1,50 @@
+"""
+app.py - Main Flask Application for the Semillas Image Processor
+
+This module implements a web-based image analysis tool using the Flask framework.
+It provides a user interface for uploading or selecting images and processing them
+to detect and analyze ChArUco boards and QR codes.
+
+Key Features:
+- **Dual Image Sources:** Supports processing images from two distinct sources:
+  1.  **Local Uploads:** Users can upload multiple image files directly to the server.
+  2.  **Google Drive Integration:** Users can authenticate with their Google account,
+      browse their Drive folders, or paste a folder link to process images stored
+      in the cloud.
+- **Image Processing:**
+  - **QR Code Detection:** Identifies QR codes in images, draws bounding boxes,
+    and decodes their content. It can handle standard text and compressed JSON data.
+  - **ChArUco Board Detection:** Detects ChArUco calibration patterns, drawing
+    the detected board and corners on the image.
+- **Dynamic Web Interface:** The backend serves a single main HTML page (`index.html`)
+  and provides a set of API endpoints. The frontend uses JavaScript (AJAX/Fetch)
+  to communicate with these endpoints, allowing for a dynamic user experience
+  without full page reloads (e.g., navigating between images, viewing processing
+  results).
+- **Google OAuth 2.0 Flow:** Manages the entire authentication and authorization
+  process for accessing Google Drive, including token handling, refresh, and
+  session management.
+- **State Management:** Uses Flask's session to maintain user state across requests,
+  such as the list of images (local or Drive), the current image index, and
+  Google authentication credentials.
+
+Architecture:
+- The application is built around a set of RESTful-like API endpoints that return
+  JSON data.
+- A central helper function, `get_processed_image_data`, abstracts the logic for
+  fetching and processing an image, regardless of its source (local or Drive).
+- For Google Drive, image metadata (file list) is fetched once per folder, but
+  the actual image content is downloaded on-demand as the user navigates to it,
+  improving performance and reducing bandwidth.
+- The application is configured to run behind a reverse proxy (using
+  `werkzeug.middleware.proxy_fix.ProxyFix`), making it suitable for deployment
+  on platforms like Google Cloud Run.
+
+Configuration:
+- The application relies on environment variables for sensitive data, primarily
+  `FLASK_SECRET_KEY` and `GOOGLE_OAUTH_CREDENTIALS`. It falls back to a local
+  `client_secret.json` file if the environment variable is not set.
+"""
 from flask import Flask, request, render_template, jsonify, send_file, session, redirect, url_for, flash
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build

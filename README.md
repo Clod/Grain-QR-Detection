@@ -1,200 +1,95 @@
-# Grain-QD-Detection & Web Viewer
+# Grain-QD-Detection
 
-## Project Overview
+## Overview
 
-This project is a Flask web application designed for viewing, processing, and analyzing images containing QR codes and ChArUco calibration boards. It allows users to upload images locally or connect to their Google Drive to select and process images directly from the cloud. The application provides an interactive interface to view original and processed images side-by-side, with features for zoom/pan, and detailed information display for detected elements.
+This project is a web application designed for the detection and analysis of quality control markers in images, specifically focusing on ChArUco patterns and QR codes. It provides a user-friendly interface to process images either from a local source or directly from a user's Google Drive, making it a versatile tool for image-based quality inspection and data extraction.
 
-## Features
+The application analyzes images to identify these markers, overlays visual feedback onto the processed image, and extracts valuable data, such as the content of QR codes.
 
-*   **Local Image Upload:** Upload images directly from your computer for processing.
-*   **QR Code Detection & Decoding:** Identifies QR codes in images and extracts their data.
-*   **ChArUco Board Detection:** Detects ChArUco boards, useful for camera calibration and spatial localization tasks.
-*   **Interactive Image Viewer:**
-    *   Displays original and processed (annotated) images.
-    *   Supports zoom via mouse wheel and panning via drag-and-drop.
-    *   Dedicated controls for zoom in, zoom out, and reset zoom.
-*   **Google Drive Integration:**
-    *   Secure login with Google OAuth 2.0.
-    *   List folders from your Google Drive.
-    *   Select a folder to view and process images directly from it.
-    *   Seamlessly switch between local and Drive image sources.
-*   **Information Panel:** Shows real-time status of ChArUco detection and lists decoded QR code data.
-*   **Batch Processing Capabilities:** (Underlying scripts, `read_qr.py`, `detect_and_draw_qr.py`, `batch_process_qrs.py` can be used for command-line batch operations).
+## Key Features
 
-## Tech Stack
+*   **Dual Marker Detection:** Capable of identifying both ChArUco board patterns and QR codes within the same image.
+*   **Rich Data Extraction:** Decodes QR code data, including validation and parsing of JSON-formatted content, and reports the status of ChArUco detection.
+*   **Visual Feedback:** Overlays colored polygons on the detected markers for clear visual confirmation and displays extracted information in a dedicated panel.
+*   **Flexible Image Sourcing:** Supports processing images uploaded from a local computer or fetching them from a specified Google Drive folder.
+*   **Web-Based UI:** A clean and interactive web interface built with the Flask framework, allowing for easy image loading, navigation, and data visualization.
+*   **Google Integration:** Securely authenticates with Google via OAuth 2.0 to access user-specified image folders in Google Drive.
+*   **Containerized Deployment:** Fully containerized using Docker and includes scripts to facilitate deployment to Google Cloud Platform (GCP), specifically Cloud Run.
 
-*   **Backend:** Python, Flask
-*   **Frontend:** HTML, CSS, JavaScript, Bootstrap 5
-*   **Image Processing:** OpenCV (`opencv-python-headless`), Pillow
-*   **Google API Client:** `google-api-python-client`, `google-auth-httplib2`, `google-auth-oauthlib`
-*   **QR Decoding:** `qreader`
-*   **Testing:** `unittest` (Python standard library)
+## How It Works
 
-## Screenshots
+The application provides two main workflows for image processing:
 
-*Main application interface showing an image with detected QR codes and ChArUco board:*
-<img src="readme_img/main_interface_example.png" alt="Main application interface with QR and ChArUco detection" width="700">
+1.  **Local File Processing:** A user can upload one or more images from their computer. The application processes the first image and displays the original, the processed version with markers highlighted, and an information panel. Navigation buttons allow the user to cycle through the entire batch of uploaded images.
 
-*Google Drive folder selection modal:*
-<img src="readme_img/drive_folder_selection.png" alt="Google Drive folder selection" width="500">
+2.  **Google Drive Processing:** A user can log in with their Google account and provide a link to a folder in their Google Drive. The application then fetches the images from this folder and processes them sequentially, offering the same navigation and analysis experience as the local processing flow.
 
-*(Existing QR detection example images can be kept or updated)*
-<div style="display: flex; gap: 10px;">
-   <img src="readme_img/IMG_20250521_185356657.jpg" alt="Original image with multiple QR codes" width="300">
-   <img src="readme_img/IMG_20250521_185356657_qr_all.jpg" alt="Image with all detected QR codes highlighted" width="300">
-</div>
+## Technical Details
 
-## Setup and Installation
+*   **Backend:** The application is built on the **Flask** web framework. For production environments (like the Docker container), it is served by **Gunicorn** for robustness and scalability.
+*   **Image Processing:** Core image analysis is performed using the **OpenCV** library, which provides the functions for ChArUco and QR code detection.
+*   **Deployment:** The application is designed for cloud-native deployment. It includes a `Dockerfile` for building a container image and helper scripts to automate building, running locally, and deploying to **Google Cloud Run**.
+*   **Configuration:** Google API credentials can be configured either through a `client_secret.json` file for local development or via environment variables for secure deployment in a cloud environment, with support for GCP Secret Manager.
+
+## Session Management and Data Handling
+
+The application relies on server-side sessions to manage user state and handle data securely and efficiently across multiple requests. This is crucial for both the Google Drive integration and for navigating through batches of images.
+
+### Session Mechanism
+
+The application utilizes Flask's built-in session management. These sessions are cookie-based but signed cryptographically. The session data itself is stored on the server, and only a secure identifier is sent to the client's browser in a cookie. This prevents client-side tampering and keeps sensitive information like API tokens from being exposed.
+
+### Handling Google Authentication
+
+The session is fundamental to the "Login with Google" feature. The authentication flow is as follows:
+
+1.  **Initiation:** The user clicks the login button, and the Flask backend initiates the Google OAuth 2.0 flow, redirecting the user to Google.
+2.  **Authorization:** The user is prompted by Google's consent screen to grant the application permission to view their Google Drive files.
+3.  **Token Exchange:** Upon successful authorization, Google redirects the user back to the application with an authorization code. The backend securely exchanges this code for an **access token** and a **refresh token**.
+4.  **Session Storage:** These critical tokens are stored in the user's server-side session. The access token is used to make authenticated API calls to Google Drive on the user's behalf.
+5.  **Logout:** When the user logs out, the application explicitly clears these credentials from the session, effectively revoking its access and invalidating the user's authenticated state for the application.
+
+### Handling Image Data and Navigation
+
+The session is also used to maintain the context of the user's current task, such as processing a folder of images. This creates a stateful experience.
+
+*   **Local Uploads:** When a user uploads multiple files, the application stores a list of temporary file paths in the session. An index, also stored in the session, keeps track of which image is currently being viewed.
+*   **Google Drive Batches:** When a user connects a Google Drive folder, the application fetches a list of file IDs for all images in that folder. This list of IDs and the current navigation index are stored in the session.
+*   **Navigation:** When the user clicks "Next" or "Previous", the backend uses the session's index to retrieve the next file path or ID from the list. It then fetches the corresponding image data (either from local storage or by making an API call to Google Drive), processes it, and returns the results. This makes the multi-image processing workflow seamless and stateful.
+
+## Setup and Deployment
 
 ### Prerequisites
-*   Python 3.8 or newer
-*   `pip` (Python package installer)
 
-### Installation Steps
+*   Docker installed on your local machine.
+*   A Google Cloud Platform project with the **Secret Manager** and **Cloud Run** APIs enabled.
+*   The `gcloud` CLI installed and configured for your GCP project.
 
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/your-username/Grain-QD-Detection.git
-    # Replace with your actual repository URL if forked/different
-    cd Grain-QD-Detection
-    ```
+### Google Credentials Setup
 
-2.  **Create and activate a virtual environment (recommended):**
-    ```bash
-    python -m venv venv
-    # On Windows
-    venv\Scripts\activate
-    # On macOS/Linux
-    source venv/bin/activate
-    ```
+1.  In the Google Cloud Console, create OAuth 2.0 credentials for a **Web application**.
+2.  Add the necessary authorized redirect URIs. For local development, this is typically `http://localhost:8080/oauth2callback`. For your deployed app, it will be `https://<your-cloud-run-url>/oauth2callback`.
+3.  **For local development:** Download the credentials as `client_secret.json` and place it in the project root.
+4.  **For cloud deployment:** It is highly recommended to store the entire content of the `client_secret.json` file in **GCP Secret Manager**. The application is configured to read these credentials from an environment variable that points to the secret's resource name.
 
-3.  **Install dependencies:**
-    ```bash
-    pip install -r requirements.txt
-    ```
+### Local Development
 
-4.  **Google OAuth Setup (for Google Drive Integration):**
-    *   Go to the [Google Cloud Console](https://console.cloud.google.com/).
-    *   Create a new project or select an existing one.
-    *   In the navigation menu, go to "APIs & Services" > "Enabled APIs & services". Click "+ ENABLE APIS AND SERVICES" and search for "Google Drive API". Enable it.
-    *   Go to "APIs & Services" > "Credentials".
-    *   Click "+ CREATE CREDENTIALS" and choose "OAuth client ID".
-    *   If prompted, configure the OAuth consent screen:
-        *   User Type: External (or Internal if applicable to your GSuite organization).
-        *   App name: (e.g., "Grain QD Detector WebApp")
-        *   User support email: Your email.
-        *   Developer contact information: Your email.
-        *   Scopes: Add `/auth/drive.metadata.readonly` and `/auth/drive.readonly`.
-        *   Test users: Add your Google account email(s) while the app is in "Testing" publish status.
-    *   Select "Web application" as the application type.
-    *   **Authorized JavaScript origins:** Add your application's origins. For local development, these are typically:
-        *   `http://localhost:8000`
-        *   `http://127.0.0.1:8000`
-    *   **Authorized redirect URIs:** Add the URI for the OAuth callback. For this application, it is:
-        *   `http://localhost:8000/authorize/google`
-        *   `http://127.0.0.1:8000/authorize/google`
-    *   Click "CREATE".
-    *   Download the client secret JSON file. Rename it to `client_secret.json` and place it in the root directory of this project.
-    *   **IMPORTANT:** This `client_secret.json` file contains sensitive information. **Do not commit it to version control.** Ensure it is listed in your `.gitignore` file (a line with `client_secret.json` should be added if not present).
+The project includes a script to simplify local setup. This script builds the Docker image and runs it in a local container, exposing the application on port 8080.
 
-5.  **Set Flask Secret Key:**
-    The application requires a secret key for session management. Set it as an environment variable:
-    ```bash
-    # On macOS/Linux
-    export FLASK_SECRET_KEY='your_very_secret_random_key_here'
-    # On Windows (cmd)
-    set FLASK_SECRET_KEY='your_very_secret_random_key_here'
-    # On Windows (PowerShell)
-    $env:FLASK_SECRET_KEY='your_very_secret_random_key_here'
-    ```
-    Replace `'your_very_secret_random_key_here'` with a strong, unique key.
-
-## Running the Application
-
-1.  Ensure your virtual environment is activated and all dependencies are installed.
-2.  Set the `FLASK_SECRET_KEY` environment variable as described above.
-3.  Run the Flask development server:
-    ```bash
-    python app.py
-    ```
-4.  Open your web browser and navigate to `http://127.0.0.1:8000/`.
-
-## Usage
-
-### Local Files
-1.  Click the "Select Images" button on the main page.
-2.  Choose one or more image files from your computer. Accepted formats: PNG, JPG/JPEG, BMP, GIF.
-3.  The images will be uploaded, and the first selected image will be processed and displayed.
-4.  Use the "Previous" and "Next" buttons below the original image display to navigate through your uploaded batch.
-
-### Google Drive Integration
-1.  Click the "Login with Google" button. You will be redirected to Google for authentication.
-2.  Sign in with your Google account and grant the requested permissions (view metadata and files in your Google Drive).
-3.  Once logged in, click the "List Google Drive Folders" button.
-4.  A page will display a list of folders from your Google Drive. Click on a folder name to select it.
-5.  After selecting a folder, the application will list images found in that folder. The first image will be loaded and processed.
-6.  Navigate through Drive images using the "Previous" and "Next" buttons.
-7.  To switch back to local file mode, simply use the "Select Images" button to upload local files. This will clear the Drive session.
-8.  To disconnect from Google Drive, click the "Logout from Google" button.
-
-### Image Viewer
-*   **Left Panel:** Displays the original uploaded/selected image.
-*   **Center Panel (Processed Image):**
-    *   Shows the image after QR code and ChArUco board detection (annotations are drawn).
-    *   **Zoom:** Use the mouse wheel while hovering over this image to zoom in or out.
-    *   **Pan:** Click and drag the processed image to pan.
-    *   **Controls:** Use the "Reset Zoom", "Zoom In (+)", and "Zoom Out (-)" buttons below the processed image for additional control.
-*   **Right Panel (Information):**
-    *   **ChArUco Status:** Indicates if a ChArUco board was detected ("Detected", "Not Detected", or "Unknown").
-    *   **QR Decoded Data:** Lists all detected QR codes and their decoded data. If the data is JSON, it will be pretty-printed.
-
-## Project Structure
-
-```
-Grain-QD-Detection/
-├── app.py                    # Main Flask application file
-├── test_app.py               # Unit and integration tests
-├── requirements.txt          # Python dependencies
-├── client_secret.json        # (Gitignored) Google OAuth client secrets
-├── static/                   # Frontend static files
-│   ├── app.js                # Main JavaScript for frontend interactions
-│   └── style.css             # Custom CSS styles
-├── templates/                # HTML templates for Flask
-│   ├── index.html            # Main application page
-│   ├── drive_folders.html    # Page for listing Google Drive folders
-│   └── error.html            # Generic error display page
-├── uploads/                  # Default temporary storage for local image uploads
-├── drive_temp_downloads/     # Default temporary storage for Drive image downloads
-├── readme_img/               # Images used in this README
-├── detect_and_draw_qr.py     # Script for QR detection (can be run standalone)
-├── charuco_detector.py       # Script/module for ChArUco detection
-├── batch_process_qrs.py      # Script for batch processing QR codes from a folder
-└── read_qr.py                # Basic script to read QR codes from a single image
+```bash
+# From the project root
+sh ./scripts/build_and_run_locally.sh
 ```
 
-## Troubleshooting
+You can then access the application at `http://localhost:8080`.
 
-*   **Google OAuth Errors (`redirect_uri_mismatch`, etc.):**
-    *   Ensure the "Authorized JavaScript origins" and "Authorized redirect URIs" in your Google Cloud Console OAuth client ID settings exactly match the URLs you are using for the application (including `http` vs `https` and port numbers). Common local URLs are `http://localhost:8000` and `http://127.0.0.1:8000` for origins, and `http://localhost:8000/authorize/google` and `http://127.0.0.1:8000/authorize/google` for redirect URIs.
-*   **`client_secret.json` Not Found:** Make sure you downloaded the JSON file from Google Cloud Console, renamed it to `client_secret.json`, and placed it in the root directory of the project.
-*   **Permission Denied for Google Drive Files:** If you can list folders but not images, or get errors processing specific files, verify that the account you authenticated with has at least read permission for those files/folders in Google Drive. The application requests read-only scopes.
-*   **Flask `FLASK_SECRET_KEY` Not Set:** If you see warnings about session cookies or sessions not persisting, ensure the `FLASK_SECRET_KEY` environment variable is set before running `python app.py`.
+### Google Cloud Deployment
 
-## License
+A deployment script automates the process of building the Docker image, pushing it to Google Artifact Registry, and deploying it as a new service on Cloud Run.
 
-This project is currently unlicensed. You are free to use, modify, and distribute it as you see fit, but without any warranty. Consider adding an open-source license like MIT or Apache 2.0 if you plan to share it more broadly.
-(Previously "None", updated to reflect common practice)
+```bash
+# Make sure to edit the script with your GCP project details first
+sh ./scripts/upload_to_gcp.sh
+```
 
-## Contributing
-
-Contributions are welcome! If you'd like to contribute:
-1. Fork the repository.
-2. Create a new branch for your feature or bug fix (`git checkout -b feature/your-feature-name`).
-3. Make your changes.
-4. Add or update tests for your changes in `test_app.py`.
-5. Ensure all tests pass.
-6. Commit your changes (`git commit -am 'Add some feature'`).
-7. Push to the branch (`git push origin feature/your-feature-name`).
-8. Create a new Pull Request.
-
-Please provide a clear description of your changes when submitting a pull request.
+This script ensures that the correct environment variables (like the one for Google credentials) are set for the Cloud Run service during deployment.

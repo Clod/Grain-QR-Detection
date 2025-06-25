@@ -1,3 +1,22 @@
+/**
+ * app.js - Frontend Logic for the Granos Image Processor
+ *
+ * This script defines the ImageViewer class, which manages the entire user interface
+ * and interaction logic for the web application. It communicates with the Flask
+ * backend via asynchronous Fetch API calls to handle image uploads, Google Drive
+ * integration, image processing, and navigation.
+ *
+ * Core Features Handled by this Script:
+ * - **State Management:** Keeps track of the current image index, total number of images,
+ *   and the current mode (local files vs. Google Drive).
+ * - **Event Handling:** Binds event listeners to UI elements for actions like file uploads,
+ *   button clicks (navigation, zoom), and Google Drive link submissions.
+ * - **Dynamic UI Updates:** Renders images, processing results (ChArUco status, QR data),
+ *   and status messages without requiring a full page reload.
+ * - **Image Interaction:** Implements zoom (via mouse wheel and buttons) and pan
+ *   (via drag-and-drop) functionality for the processed image view.
+ * - **API Communication:** Encapsulates all `fetch` calls to the backend API endpoints.
+ */
 class ImageViewer {
     constructor() {
         this.currentIndex = 0;
@@ -15,6 +34,13 @@ class ImageViewer {
         this.initializeState(); // Call new method
     }
 
+    /**
+     * Initializes the viewer's state based on global variables set by the Flask template.
+     * This allows the frontend to know if it should start in "Google Drive mode"
+     * or "Local file mode" when the page loads, and immediately fetch the first
+     * image if a Drive folder was already selected in a previous session.
+     * @returns {void}
+     */
     initializeState() {
         // Check global JS variables set by the template
         if (typeof isDriveModeActive !== 'undefined' && isDriveModeActive &&
@@ -40,6 +66,11 @@ class ImageViewer {
         }
     }
     
+    /**
+     * Caches references to all necessary DOM elements for performance and easy access.
+     * This avoids repeated `document.getElementById` calls throughout the code.
+     * @returns {void}
+     */
     initializeElements() {
         this.fileInput = document.getElementById('fileInput');
         this.uploadBtn = document.getElementById('uploadBtn');
@@ -62,6 +93,12 @@ class ImageViewer {
         this.zoomOutBtn = document.getElementById('zoomOutBtn');
     }
     
+    /**
+     * Binds all necessary event listeners to the DOM elements.
+     * This includes handling clicks for file uploads, navigation, zoom controls,
+     * and Drive link submission, as well as mouse events for interactive pan and zoom.
+     * @returns {void}
+     */
     bindEvents() {
         this.uploadBtn.addEventListener('click', () => this.fileInput.click());
         this.fileInput.addEventListener('change', (e) => this.handleFileUpload(e));
@@ -142,6 +179,14 @@ class ImageViewer {
         }
     }
     
+    /**
+     * Handles the submission of a Google Drive folder link.
+     * It takes the URL from the input field, sends it to the backend for validation
+     * and processing, and then updates the UI to reflect the new set of images
+     * from the Drive folder.
+     * @returns {Promise<void>} A promise that resolves when the link has been processed
+     *                          and the UI is updated, or an error is handled.
+     */
     async handleDriveLinkSubmit() {
         if (!this.driveLinkInput) {
             console.error("Drive link input element not found.");
@@ -193,6 +238,17 @@ class ImageViewer {
         }
     }
 
+    /**
+     * Fetches and displays the image and its processing data for a given index.
+     * This is a core function that communicates with the `/process/<index>` backend endpoint.
+     * It handles both success and error responses, updating the image displays,
+     * information panels (ChArUco, QR), navigation state, and status bar.
+     * It works transparently for both local files and Google Drive images.
+     *
+     * @param {number} index - The zero-based index of the image to load.
+     * @returns {Promise<void>} A promise that resolves when the image data is loaded
+     *                          and the UI is updated, or an error is handled.
+     */
     async loadImage(index) {
         // For local mode, this check is useful. For Drive mode, server handles index validity.
         // However, with totalImages now being updated from server response, this check can be more robust.
@@ -279,6 +335,15 @@ class ImageViewer {
         }
     }
     
+    /**
+     * Handles navigation to the next or previous image.
+     * It calls the `/navigate/<direction>` endpoint on the backend. The backend
+     * determines the new image index and returns the complete data for that image.
+     * This function then calls `loadImage` with the new index to update the UI.
+     *
+     * @param {string} direction - The direction to navigate, either 'prev' or 'next'.
+     * @returns {void}
+     */
     navigate(direction) {
         // Navigation now primarily relies on server-side redirects via fetch
         // The client-side currentIndex and totalImages are updated by loadImage
@@ -312,6 +377,13 @@ class ImageViewer {
             });
     }
     
+    /**
+     * Updates the ChArUco status indicator in the UI.
+     * It changes the text and CSS class of the status element to reflect
+     * whether a ChArUco board was detected in the current image.
+     * @param {boolean} detected - True if a board was detected, false otherwise.
+     * @returns {void}
+     */
     updateCharucoStatus(detected) {
         const { classList } = this.charucoStatus;
 
@@ -341,6 +413,15 @@ class ImageViewer {
         this.charucoStatus.textContent = statusMessage;
     }
     
+    /**
+     * Updates the QR code information panel with data from the current image.
+     * It formats the raw QR data and any decoded JSON objects into readable HTML
+     * and displays it. It handles cases with single or multiple QR codes.
+     *
+     * @param {string[]} qrCodes - An array of raw string data from detected QR codes.
+     * @param {Object[]} qrCodesDecoded - An array of objects resulting from JSON-parsing the qrCodes.
+     * @returns {void}
+     */
     updateQRData(qrCodes, qrCodesDecoded) {
         console.log("updateQRData called. qrCodesDecoded:", qrCodesDecoded); // Log the entire decoded array
         if (qrCodes && qrCodes.length > 0) {
@@ -365,21 +446,49 @@ class ImageViewer {
         }
     }
     
+    /**
+     * Enables or disables the 'Previous' and 'Next' navigation buttons.
+     * This is based on flags received from the server, ensuring users cannot
+     * navigate beyond the bounds of the image list.
+     * @param {boolean} hasPrev - True if there is a previous image.
+     * @param {boolean} hasNext - True if there is a next image.
+     * @returns {void}
+     */
     updateNavigation(hasPrev, hasNext) {
         this.prevBtn.disabled = !hasPrev;
         this.nextBtn.disabled = !hasNext;
     }
     
+    /**
+     * Makes the main image display and control sections visible.
+     * This is typically called after the first set of images (either local or Drive)
+     * has been successfully loaded.
+     * @returns {void}
+     */
     showImageSections() {
         this.imageSection.style.display = '';
         this.controlsSection.style.display = 'block';
     }
     
+    /**
+     * Updates the text content of the main status bar at the bottom of the screen.
+     * This provides users with feedback about the application's current state
+     * (e.g., "Uploading...", "Processing image...", "Error...").
+     * @param {string} message - The message to display.
+     * @returns {void}
+     */
     updateStatus(message) {
         this.statusBar.textContent = message;
     }
     
     // Zoom and Pan functionality
+    /**
+     * Handles the mouse wheel event for zooming.
+     * It calculates a zoom factor based on the scroll direction and calls
+     * `adjustZoom` to apply the new zoom level, centered on the mouse cursor.
+     * @param {WheelEvent} event - The mouse wheel event.
+     * @returns {void}
+     */
     handleWheel(event) {
         event.preventDefault();
         const zoomFactor = event.deltaY > 0 ? 0.9 : 1.1;
@@ -387,6 +496,13 @@ class ImageViewer {
     }
     
     adjustZoom(factor, centerX = null, centerY = null) {
+    /**
+     * Applies a zoom factor to the image and adjusts the pan to keep the view centered.
+     * @param {number} factor - The zoom multiplier (e.g., 1.1 for zoom in, 0.9 for zoom out).
+     * @param {?number} [centerX=null] - The x-coordinate to zoom towards. Defaults to the container center.
+     * @param {?number} [centerY=null] - The y-coordinate to zoom towards. Defaults to the container center.
+     * @returns {void}
+     */
         const containerRect = this.imageContainer.getBoundingClientRect();
         const imgRect = this.processedImage.getBoundingClientRect();
         
@@ -406,6 +522,10 @@ class ImageViewer {
         }
     }
     
+    /**
+     * Resets the image zoom and pan to their default state (100% scale, no offset).
+     * @returns {void}
+     */
     resetZoom() {
         this.zoom = 1;
         this.panX = 0;
@@ -413,6 +533,12 @@ class ImageViewer {
         this.updateImageTransform();
     }
     
+    /**
+     * Initiates the drag-to-pan functionality.
+     * Called on `mousedown`, it sets the dragging state and records the initial mouse position.
+     * @param {MouseEvent} event - The mousedown event.
+     * @returns {void}
+     */
     startDrag(event) {
         this.isDragging = true;
         this.lastMouseX = event.clientX;
@@ -421,6 +547,12 @@ class ImageViewer {
         event.preventDefault();
     }
     
+    /**
+     * Handles the image panning while the mouse is being dragged.
+     * Called on `mousemove`, it calculates the change in mouse position and updates the pan coordinates.
+     * @param {MouseEvent} event - The mousemove event.
+     * @returns {void}
+     */
     drag(event) {
         if (!this.isDragging) return;
         
@@ -436,11 +568,20 @@ class ImageViewer {
         this.updateImageTransform();
     }
     
+    /**
+     * Stops the drag-to-pan functionality.
+     * Called on `mouseup`, it resets the dragging state.
+     * @returns {void}
+     */
     stopDrag() {
         this.isDragging = false;
         this.processedImage.style.cursor = 'grab';
     }
     
+    /**
+     * Applies the current zoom and pan values to the image element's CSS transform property.
+     * @returns {void}
+     */
     updateImageTransform() {
         this.processedImage.style.transform = 
             `translate(${this.panX}px, ${this.panY}px) scale(${this.zoom})`;
