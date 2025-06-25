@@ -1,0 +1,53 @@
+# docker-compose.yml
+
+# run with
+#  % docker compose up -d --build
+# stop with
+#  % docker compose down
+services:
+  ftp-server:
+    image: fauria/vsftpd:latest
+    platform: linux/amd64 # Specify platform for Apple Silicon (M1/M2) compatibility
+    container_name: image-viewer-ftp-server
+    ports:
+      - "21:21"
+      - "20:20"
+      - "21100-21110:21100-21110"
+    environment:
+      - FTP_USER=myuser
+      - FTP_PASS=mypassword
+      # Use 127.0.0.1 for local connections on Mac/Linux.
+      # For external connections, replace with your host's public IP.
+      - PASV_ADDRESS=127.0.0.1
+      - PASV_MIN_PORT=21100
+      - PASV_MAX_PORT=21110
+    volumes:
+      - shared_ftp_data:/home/vsftpd # Mount the named volume
+    restart: always
+
+  flask-app:
+    platform: linux/amd64 # Match platform for consistency and Mac compatibility
+    build:
+      context: ./flask_app
+    container_name: image-viewer-flask-app
+    ports:
+      # Map host port 8080 to container port 8080 (where gunicorn listens)
+      - "8080:8080"
+    volumes:
+      # Mount the application code for live-reloading during development
+      - ./flask_app:/app
+      # Mount the shared volume for FTP data
+      - shared_ftp_data:/app/shared_data # Mount the SAME named volume
+    # Override the Dockerfile's CMD to enable live-reloading for development
+    command: >
+      gunicorn --bind 0.0.0.0:8080 --workers 1 --threads 4 --worker-class gthread
+      --timeout 300 --reload app:app
+    restart: always
+    depends_on:
+      - ftp-server # Optional: ensures ftp-server starts before flask-app, though not strictly required for volume sharing
+    # Load secrets and config from an environment file
+    env_file:
+      - ./flask_app/.env
+
+volumes:
+  shared_ftp_data:
