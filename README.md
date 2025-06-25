@@ -2,7 +2,7 @@
 
 A web application for detecting ChArUco patterns and QR codes in images, with support for local files (located on the user's computer), server-side files (located on the server), and Google Drive integration.
 
-<img src="readme_img/main_screen.png" alt="Application Screenshot" style="width: 80%;">
+<img src="readme_img/main_screen.png" alt="Application Screenshot" style="width: 90%;">
 
 ## Table of Contents
 
