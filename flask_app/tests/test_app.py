@@ -15,7 +15,7 @@ import sys
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, PROJECT_ROOT)
 
-from app import app, cv_image_to_base64, process_image as app_process_image, extract_folder_id_from_url, get_processed_image_data, CLIENT_SECRETS_FILE, SCOPES, CHARUCO_CONFIG
+from flask_app.app import app, cv_image_to_base64, process_image as app_process_image, extract_folder_id_from_url, get_processed_image_data, CLIENT_SECRETS_FILE, SCOPES, CHARUCO_CONFIG
 
 # Dummy client_secret.json content
 DUMMY_CLIENT_SECRET_CONTENT = {

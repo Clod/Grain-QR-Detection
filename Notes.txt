@@ -1,8 +1,8 @@
-(venv) (base)  code % docker build -t image-viewer-mac:latest .
+The process below is alteady automated in:
 
-docker run --rm -p 8080:8080 image-viewer-mac:latest
+docker_build_and_run_locally.sh
 
-
+It basically sets up several env variable for the container to be able to access Google Secret Manager
 
 #!/bin/bash
 
@@ -44,7 +44,7 @@ echo "GOOGLE_OAUTH_CREDENTIALS environment variable set from Secret Manager."
 docker run \
   -e GOOGLE_OAUTH_CREDENTIALS="$(gcloud secrets versions access "$SECRET_VERSION" \
         --secret="$SECRET_NAME" --project="$PROJECT_ID")" \
-  -p 8000:8000 image-viewer:latest
+  -p 8080:8080 image-viewer:latest
 
 Grant the Cloud Run Admin role to your user account for this project:
 
