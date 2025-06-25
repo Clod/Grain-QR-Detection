@@ -27,6 +27,8 @@ class ImageViewer {
         this.panY = 0;
         this.isDragging = false;
         this.lastMouseX = 0;
+        this.isDriveMode = false; // Internal state
+        this.isServerMode = false; // Internal state
         this.lastMouseY = 0;
         
         this.initializeElements();
@@ -43,20 +45,26 @@ class ImageViewer {
      */
     initializeState() {
         // Check global JS variables set by the template
-        if (typeof isDriveModeActive !== 'undefined' && isDriveModeActive &&
-            typeof initialDriveImageCount !== 'undefined' && initialDriveImageCount > 0) {
-
+        if (isDriveModeActive && initialDriveImageCount > 0) {
+            this.isDriveMode = true;
             this.totalImages = initialDriveImageCount;
             this.currentIndex = 0; // Assuming Drive mode always starts at index 0 if images exist
             this.showImageSections();
             this.updateStatus(`Google Drive folder selected. Found ${this.totalImages} images. Loading first image...`);
             this.loadImage(0); // Load the first image from Drive
             console.log("ImageViewer initialized in Drive Mode.");
-        } else if (typeof isDriveModeActive !== 'undefined' && !isDriveModeActive) {
+        } else if (isServerModeActive && initialServerImageCount > 0) { // New Server Mode
+            this.isServerMode = true;
+            this.totalImages = initialServerImageCount;
+            this.currentIndex = 0;
+            this.showImageSections();
+            this.updateStatus(`Server images selected. Found ${this.totalImages} images. Loading first image...`);
+            this.loadImage(0); // Load the first image from Server
+            console.log("ImageViewer initialized in Server Mode.");
+        }
+        else if (!isDriveModeActive && !isServerModeActive) {
             // Standard local file mode, or no files selected yet
-            // Optional: Hide image sections if no local files are loaded initially.
-            // this.imageSection.style.display = 'none';
-            // this.controlsSection.style.display = 'none';
+            // This branch is for when neither Drive nor Server mode is active.
             this.updateStatus('Please select images or a Google Drive folder.');
             console.log("ImageViewer initialized in Local File Mode or awaiting selection.");
         } else {
@@ -91,6 +99,7 @@ class ImageViewer {
         this.submitDriveLinkBtn = document.getElementById('submitDriveLinkBtn'); 
         this.zoomInBtn = document.getElementById('zoomInBtn');
         this.zoomOutBtn = document.getElementById('zoomOutBtn');
+        this.selectServerImagesBtn = document.getElementById('selectServerImagesBtn'); // New
     }
     
     /**
@@ -125,6 +134,10 @@ class ImageViewer {
         if (this.submitDriveLinkBtn) { 
             this.submitDriveLinkBtn.addEventListener('click', () => this.handleDriveLinkSubmit());
         }
+        // Handle Server Images selection
+        if (this.selectServerImagesBtn) {
+            this.selectServerImagesBtn.addEventListener('click', () => this.handleSelectServerImages());
+        }
     }
     
     /**
@@ -157,11 +170,11 @@ class ImageViewer {
             
             const result = await response.json();
 
-            // Explicitly set isDriveModeActive to false for JS context
-            if (typeof isDriveModeActive !== 'undefined') {
-                isDriveModeActive = false;
-                console.log("Switched to Local File Mode due to file upload.");
-            }
+            // Update internal state
+            this.isDriveMode = false;
+            this.isServerMode = false;
+            // Update global var for consistency on potential page reloads
+            isDriveModeActive = false;
             
             if (result.success) {
                 this.images = result.images; // This might be less relevant if only relying on server state
@@ -219,10 +232,11 @@ class ImageViewer {
             const result = await response.json(); // Now, this is safer
 
             if (result.success && result.image_count !== undefined) {
-                if (typeof isDriveModeActive !== 'undefined') {
-                    isDriveModeActive = true;
-                    console.log("ImageViewer switched to Drive Mode via link.");
-                }
+                // Update internal state
+                this.isDriveMode = true;
+                this.isServerMode = false;
+                // Update global var for consistency on potential page reloads
+                isDriveModeActive = true;
                 this.totalImages = result.image_count;
                 this.currentIndex = 0; 
                 this.updateStatus(`Google Drive folder processed. Found ${this.totalImages} images. ${this.totalImages > 0 ? 'Loading first image...' : ''}`);
@@ -239,6 +253,50 @@ class ImageViewer {
     }
 
     /**
+     * Handles the selection of images from a pre-configured server directory.
+     * It sends a request to the backend to list available images in the server's
+     * shared volume, then updates the UI to display the first image.
+     * @returns {Promise<void>} A promise that resolves when the server images
+     *                          are loaded and the UI is updated, or an error is handled.
+     */
+    async handleSelectServerImages() {
+        this.updateStatus('Loading images from server...');
+
+        try {
+            const response = await fetch('/select_server_images', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json', // Even if body is empty, good practice
+                },
+                body: JSON.stringify({}) // Send an empty JSON object
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Server responded with ${response.status}: ${errorText}`);
+            }
+
+            const result = await response.json();
+
+            if (result.success && result.image_count !== undefined) {
+                // Update internal state
+                this.isDriveMode = false;
+                this.isServerMode = true;
+                this.totalImages = result.image_count;
+                this.currentIndex = 0;
+                this.updateStatus(`Server images loaded. Found ${this.totalImages} images. ${this.totalImages > 0 ? 'Loading first image...' : ''}`);
+                this.showImageSections();
+                this.loadImage(0);
+            } else {
+                this.updateStatus('Error loading server images: ' + (result.error || 'Unknown error from server.'));
+            }
+        } catch (error) {
+            this.updateStatus('Failed to load server images: ' + error.message);
+            console.error('Full error details:', error);
+        }
+    }
+
+    /**
      * Fetches and displays the image and its processing data for a given index.
      * This is a core function that communicates with the `/process/<index>` backend endpoint.
      * It handles both success and error responses, updating the image displays,
@@ -250,9 +308,9 @@ class ImageViewer {
      *                          and the UI is updated, or an error is handled.
      */
     async loadImage(index) {
-        // For local mode, this check is useful. For Drive mode, server handles index validity.
+        // For local mode, this check is useful. For Drive/Server modes, server handles index validity.
         // However, with totalImages now being updated from server response, this check can be more robust.
-        if (!isDriveModeActive && (index < 0 || index >= this.totalImages && this.totalImages > 0)) {
+        if (!this.isDriveMode && !this.isServerMode && (index < 0 || index >= this.totalImages && this.totalImages > 0)) {
             console.warn(`Local mode: loadImage called with invalid index ${index} for ${this.totalImages} images. Aborting.`);
             return;
         }

@@ -102,10 +102,12 @@ if not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max file size
 app.config['DRIVE_TEMP_FOLDER'] = 'drive_temp_downloads' # Added
+app.config['SERVER_IMAGES_FOLDER'] = 'shared_data' # This maps to /app/shared_data in Docker
 
 # Ensure directories exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(app.config['DRIVE_TEMP_FOLDER'], exist_ok=True) # Added
+os.makedirs(app.config['SERVER_IMAGES_FOLDER'], exist_ok=True) # Added
 
 # Google OAuth Configuration
 CLIENT_SECRETS_FILE = 'client_secret.json' # IMPORTANT: This file needs to be obtained from Google Cloud Console
@@ -434,6 +436,28 @@ def get_processed_image_data(index):
                     app.logger.info(f"Successfully deleted temporary Drive file: {temp_image_path}")
                 except OSError as e_remove:
                     app.logger.error(f"Error deleting temporary Drive file {temp_image_path}: {e_remove}")
+    elif session.get('is_server_mode') and session.get('server_image_files') is not None: # New Server Mode
+        server_files = session.get('server_image_files', [])
+        if not (0 <= index < len(server_files)):
+            app.logger.warning(f"Invalid Server image index {index} requested. Total Server images: {len(server_files)}.")
+            return ({'error': 'Invalid Server image index'}, 400)
+
+        file_name = server_files[index]
+        image_path = os.path.join(app.config['SERVER_IMAGES_FOLDER'], file_name)
+        app.logger.info(f"Processing Server file: Name='{file_name}', Path='{image_path}'")
+
+        result_data = process_image(image_path)
+        result_data.update({
+            'current_index': index,
+            'total_images': len(server_files),
+            'filename': file_name,
+            'has_next': index < len(server_files) - 1,
+            'has_prev': index > 0,
+            'source': 'server'
+        })
+        session['current_server_image_index'] = index
+        app.logger.info(f"Successfully processed server image at index {index}: {file_name}. Returning data.")
+        return result_data, 200
     else:
         # Local File Mode
         image_paths = session.get('image_paths', [])
@@ -467,10 +491,22 @@ def index():
     app.logger.info("Main page '/' accessed.")
     drive_image_files = session.get('drive_image_files', [])
     drive_images_count = len(drive_image_files)
-    is_drive_mode = bool(session.get('selected_google_drive_folder_id') and drive_image_files is not None)
+    server_image_files = session.get('server_image_files', [])
+    server_images_count = len(server_image_files)
+
+    # Determine the active mode. Server mode takes precedence over drive mode if both are somehow set.
+    is_server_mode = bool(session.get('is_server_mode') and server_image_files is not None)
+    is_drive_mode = bool(session.get('selected_google_drive_folder_id') and drive_image_files is not None and not is_server_mode)
 
     # If in drive mode and no images, or index is bad, try to reset/clarify state
-    if is_drive_mode:
+    if is_server_mode: # Check server mode first
+        current_server_index = session.get('current_server_image_index', -1)
+        if not server_image_files or current_server_index == -1:
+            app.logger.info("Server mode active but no images or invalid index, ensuring clean state for JS.")
+        elif current_server_index >= server_images_count:
+            app.logger.warning(f"Server index {current_server_index} out of bounds for {server_images_count} images. Resetting index.")
+            session['current_server_image_index'] = 0 if server_images_count > 0 else -1
+    elif is_drive_mode:
         current_drive_index = session.get('current_drive_image_index', -1)
         if not drive_image_files or current_drive_index == -1 : # No images, or explicitly set to no valid image
              app.logger.info("Drive mode active but no images or invalid index, ensuring clean state for JS.")
@@ -478,11 +514,21 @@ def index():
         elif current_drive_index >= drive_images_count: # Index out of bounds
             app.logger.warning(f"Drive index {current_drive_index} out of bounds for {drive_images_count} images. Resetting index.")
             session['current_drive_image_index'] = 0 if drive_images_count > 0 else -1
+    else: # Local file mode or initial state
+        # Ensure server/drive modes are explicitly off if we're not in them
+        session.pop('is_server_mode', None)
+        session.pop('server_image_files', None)
+        session.pop('current_server_image_index', None)
+        session.pop('selected_google_drive_folder_id', None)
+        session.pop('drive_image_files', None)
+        session.pop('current_drive_image_index', None)
 
 
     return render_template('index.html',
                            drive_images_count=drive_images_count,
-                           is_drive_mode=is_drive_mode)
+                           is_drive_mode=is_drive_mode,
+                           server_images_count=server_images_count, # New
+                           is_server_mode=is_server_mode) # New
 
 @app.route('/login/google')
 def login_google():
@@ -535,6 +581,9 @@ def logout_google():
     session.pop('selected_google_drive_folder_name', None)
     session.pop('drive_image_files', None) # Added
     session.pop('current_drive_image_index', None) # Added
+    session.pop('server_image_files', None) # New
+    session.pop('is_server_mode', None) # New
+    session.pop('current_server_image_index', None) # New
     app.logger.info("User logged out from Google, session cleared for Drive items as well.")
     flash('You have been logged out from Google.', 'info')
     return redirect(url_for('index'))
@@ -653,6 +702,9 @@ def drive_select_folder(folder_id, folder_name):
     # Clear local file session variables
     session.pop('image_paths', None)
     session.pop('current_index', None)
+    session.pop('server_image_files', None) # New
+    session.pop('is_server_mode', None) # New
+    session.pop('current_server_image_index', None) # New
     app.logger.info("Cleared local image session data after selecting Drive folder.")
 
     # Fetch image files from the selected folder
@@ -774,6 +826,9 @@ def process_drive_link():
     # Clear local file session variables
     session.pop('image_paths', None)
     session.pop('current_index', None)
+    session.pop('server_image_files', None) # New
+    session.pop('is_server_mode', None) # New
+    session.pop('current_server_image_index', None) # New
     app.logger.info("Cleared local image session data for Drive link processing.")
 
     try:
@@ -868,6 +923,59 @@ def authorize_google():
         app.logger.error(f"Error fetching Google OAuth token: {e}", exc_info=True)
         return render_template('error.html', message="Could not fetch Google authentication token. Please try again."), 500
 
+@app.route('/select_server_images', methods=['POST'])
+def select_server_images():
+    """API endpoint to select images from a pre-configured server directory.
+
+    This function scans the `SERVER_IMAGES_FOLDER` for image files, stores their
+    filenames in the session, and sets the application's state to "Server Mode".
+    It clears any existing Local or Google Drive session data.
+
+    Returns:
+        flask.Response: A JSON response indicating success or failure,
+            including the count of images found.
+    """
+    app.logger.info("Received request to select server images.")
+    # Clear other session variables to switch to server mode
+    session.pop('image_paths', None)
+    session.pop('current_index', None)
+    session.pop('selected_google_drive_folder_id', None)
+    session.pop('selected_google_drive_folder_name', None)
+    session.pop('drive_image_files', None)
+    session.pop('current_drive_image_index', None)
+    app.logger.info("Cleared local and Google Drive session data for server image selection.")
+
+    server_image_files = []
+    server_images_dir = app.config['SERVER_IMAGES_FOLDER']
+    app.logger.info(f"Scanning directory for server images: {server_images_dir}")
+
+    if not os.path.isdir(server_images_dir):
+        app.logger.error(f"Server images directory does not exist or is not a directory: {server_images_dir}")
+        return jsonify({'success': False, 'error': f'Server image directory not found: {server_images_dir}'}), 500
+
+    try:
+        # Recursively scan the directory for image files
+        for root, _, files in os.walk(server_images_dir):
+            for filename in files:
+                if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif')):
+                    # Store the path relative to the base server images directory
+                    relative_path = os.path.relpath(os.path.join(root, filename), server_images_dir)
+                    server_image_files.append(relative_path)
+        server_image_files.sort() # Sort all found images alphabetically
+        app.logger.info(f"Found {len(server_image_files)} images in server directory.")
+
+        session['server_image_files'] = server_image_files
+        session['is_server_mode'] = True
+        session['current_server_image_index'] = 0 if server_image_files else -1
+
+        return jsonify({
+            'success': True,
+            'image_count': len(server_image_files)
+        })
+    except Exception as e:
+        app.logger.error(f"Error scanning server image directory {server_images_dir}: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': f'Failed to scan server image directory: {e}'}), 500
+
 @app.route('/upload', methods=['POST'])
 def upload_files():
     """Handles the uploading of multiple local image files.
@@ -888,6 +996,9 @@ def upload_files():
     session.pop('selected_google_drive_folder_name', None)
     session.pop('drive_image_files', None)
     session.pop('current_drive_image_index', None)
+    session.pop('server_image_files', None) # New
+    session.pop('is_server_mode', None) # New
+    session.pop('current_server_image_index', None) # New
     app.logger.info("Cleared Google Drive session variables due to local file upload.")
 
     app.logger.info(f"Received file upload request from {request.remote_addr}")
@@ -959,22 +1070,24 @@ def process_image_route(index):
 @app.route('/navigate/<direction>')
 def navigate(direction):
     """API endpoint to navigate to the next or previous image.
-
+ 
     This route handles requests to move through the image sequence. It determines
-    the current source (local or Drive), calculates the new index based on the
-    `direction` parameter ('next' or 'prev'), and then calls the
-    `get_processed_image_data` function to fetch and process the new image.
-
+    the current source (local, Drive, or Server), calculates the new index based on the
+    `direction` parameter ('next' or 'prev'), and then calls the `get_processed_image_data`
+    function to fetch and process the new image.
+ 
     Args:
         direction (str): The direction to navigate, either 'next' or 'prev'.
-
+ 
     Returns:
         flask.Response: A JSON response containing the data for the new image,
             identical in format to the response from `/process/<index>`.
     """
     app.logger.info(f"Navigation request received: {direction}.")
-
+    source = 'local' # Default source
+ 
     if session.get('selected_google_drive_folder_id') and session.get('drive_image_files') is not None:
+        source = 'drive'
         current_index = session.get('current_drive_image_index', 0)
         total_images = len(session.get('drive_image_files', []))
         app.logger.debug(f"Drive Navigation: Current index: {current_index}, Total Drive images: {total_images}.")
@@ -985,7 +1098,19 @@ def navigate(direction):
         else:
             app.logger.warning(f"Invalid Drive navigation direction: {direction}.")
             return jsonify({'error': 'Invalid navigation direction'}), 400
-    else:
+    elif session.get('is_server_mode') and session.get('server_image_files') is not None:
+        source = 'server'
+        current_index = session.get('current_server_image_index', 0)
+        total_images = len(session.get('server_image_files', []))
+        app.logger.debug(f"Server Navigation: Current index: {current_index}, Total Server images: {total_images}.")
+        if direction == 'next':
+            new_index = current_index + 1 if current_index < total_images - 1 else current_index
+        elif direction == 'prev':
+            new_index = current_index - 1 if current_index > 0 else current_index
+        else:
+            app.logger.warning(f"Invalid Server navigation direction: {direction}.")
+            return jsonify({'error': 'Invalid navigation direction'}), 400
+    else: # Local mode
         current_index = session.get('current_index', 0)
         image_paths = session.get('image_paths', [])
         total_images = len(image_paths)
@@ -997,10 +1122,10 @@ def navigate(direction):
         else:
             app.logger.warning(f"Invalid local navigation direction: {direction}.")
             return jsonify({'error': 'Invalid navigation direction'}), 400
-
+ 
     # If new_index is same as current_index (at a boundary), still fetch data to be consistent.
     # The frontend JS should ideally use 'has_next'/'has_prev' to disable buttons.
-    app.logger.info(f"Navigating to image at index: {new_index} (Source: {'Drive' if session.get('selected_google_drive_folder_id') else 'Local'}).")
+    app.logger.info(f"Navigating to image at index: {new_index} (Source: {source.capitalize()}).")
     data, status_code = get_processed_image_data(new_index)
     return jsonify(data), status_code
 

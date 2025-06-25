@@ -33,7 +33,8 @@
                 <div class="row mb-2"> <!-- Reduced margin -->
                     <div class="col-12 text-center">
                         <input type="file" id="fileInput" multiple accept="image/*" class="form-control" style="display: none;">
-                        <button id="uploadBtn" class="btn btn-primary btn-sm">Select Local Images</button> <!-- Smaller button, shorter text -->
+                        <button id="uploadBtn" class="btn btn-primary btn-sm">Select Local Images</button>
+                        <button id="selectServerImagesBtn" class="btn btn-secondary btn-sm mt-2">Select Server Images</button> <!-- New button -->
                         <div id="uploadStatus" class="mt-2"></div>
                     </div>
                 </div>
@@ -158,6 +159,8 @@
     <script>
         var initialDriveImageCount = {{ drive_images_count if is_drive_mode else 0 }};
         var isDriveModeActive = {{ 'true' if is_drive_mode else 'false' }};
+        var initialServerImageCount = {{ server_images_count if is_server_mode else 0 }}; // New
+        var isServerModeActive = {{ 'true' if is_server_mode else 'false' }}; // New
     </script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{{ url_for('static', filename='app.js') }}"></script>
