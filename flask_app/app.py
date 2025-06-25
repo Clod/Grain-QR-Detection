@@ -121,10 +121,28 @@ CHARUCO_CONFIG = {
 }
 
 def load_google_flow(scopes, redirect_uri, state=None):
-    """
-    Loads Google OAuth2 Flow.
-    Tries to load from GOOGLE_OAUTH_CREDENTIALS env var (as JSON string or file path).
-    Falls back to CLIENT_SECRETS_FILE if env var is not set or fails.
+    """Loads and configures the Google OAuth2 Flow object.
+
+    This function centralizes the logic for initializing the OAuth flow. It prioritizes
+    loading credentials from the `GOOGLE_OAUTH_CREDENTIALS` environment variable,
+    which can contain either a direct JSON string or a path to a credentials file.
+    If the environment variable is not set or fails to load, it falls back to
+    a local `client_secret.json` file.
+
+    Args:
+        scopes (list[str]): A list of strings representing the Google API scopes
+            required for the application.
+        redirect_uri (str): The URI that Google will redirect to after the user
+            authorizes the application. This must match one of the authorized
+            redirect URIs in the Google Cloud Console.
+        state (str, optional): A unique string to prevent cross-site request forgery.
+            If provided, it will be included in the authorization request and
+            checked on the callback. Defaults to None.
+
+    Returns:
+        google_auth_oauthlib.flow.Flow: An initialized Flow object ready to be used
+            for generating an authorization URL or fetching a token.
+
     """
     client_config = None
     creds_env_var = os.getenv("GOOGLE_OAUTH_CREDENTIALS")
@@ -159,7 +177,20 @@ def load_google_flow(scopes, redirect_uri, state=None):
 
 @app.errorhandler(413)
 def request_entity_too_large(error):
-    """Custom handler for 413 Request Entity Too Large errors."""
+    """Custom error handler for HTTP 413 Request Entity Too Large.
+
+    This function is triggered when an upload exceeds the `MAX_CONTENT_LENGTH`
+    configured for the Flask app. It logs the error details and returns a
+    JSON response to the client, providing a more user-friendly error message
+    than the default server response.
+
+    Args:
+        error: The error object passed by Flask.
+
+    Returns:
+        tuple[flask.Response, int]: A tuple containing a JSON response object
+            with error details and the HTTP status code 413.
+    """
     content_length = request.headers.get('Content-Length', 'N/A')
     max_length = app.config.get('MAX_CONTENT_LENGTH', 'N/A')
     app.logger.error(
@@ -173,7 +204,19 @@ def request_entity_too_large(error):
     }), 413
 
 def cv_image_to_base64(cv_image):
-    """Convert OpenCV image to base64 string for web display."""
+    """Converts an OpenCV image (numpy array) to a base64 encoded string.
+
+    This is used to embed image data directly into HTML or JSON responses for
+    display in a web browser. The image is converted from BGR (OpenCV's default)
+    to RGB, then saved as a JPEG in-memory, and finally base64 encoded.
+
+    Args:
+        cv_image (numpy.ndarray): The input image in OpenCV format (BGR color).
+
+    Returns:
+        str | None: A data URI string (e.g., "data:image/jpeg;base64,...")
+            representing the image, or None if the input `cv_image` is None.
+    """
     app.logger.info("Attempting to convert OpenCV image to base64.")
     if cv_image is None:
         app.logger.warning("Input OpenCV image is None, returning None.")
@@ -193,7 +236,27 @@ def cv_image_to_base64(cv_image):
     return f"data:image/jpeg;base64,{image_base64}"
 
 def process_image(image_path):
-    """Process image for QR codes and ChArUco detection."""
+    """Loads an image from a file path and processes it for ChArUco and QR codes.
+
+    This function performs the core image analysis:
+    1. Reads the image file using OpenCV.
+    2. Converts the original image to base64 for display.
+    3. Calls `detect_and_draw_qrcodes` to find and decode QR codes, drawing on a copy.
+    4. Calls `detect_charuco_board` on the (potentially QR-annotated) image.
+    5. Converts the final processed image to base64.
+
+    Args:
+        image_path (str): The local file system path to the image to be processed.
+
+    Returns:
+        dict: A dictionary containing the processing results:
+            - 'original_image' (str): Base64 encoded original image.
+            - 'processed_image' (str): Base64 encoded image with detections drawn.
+            - 'charuco_detected' (bool): True if a ChArUco board was found.
+            - 'qr_codes' (list[str]): A list of decoded string data from QR codes.
+            - 'qr_codes_json' (list[dict]): A list of decoded JSON objects from QR codes.
+            Returns a dictionary with default values if the image cannot be loaded.
+    """
     app.logger.info(f"Starting image processing for: {image_path}")
     result = {
         'original_image': None,
@@ -264,7 +327,30 @@ def process_image(image_path):
     return result
 
 def get_processed_image_data(index):
-    """Helper function to fetch and process image data for a given index."""
+    """Fetches and processes an image by its index, abstracting the source.
+
+    This is a central helper that handles two modes based on the user's session:
+    1.  **Google Drive Mode**: If a Drive folder is selected, it uses the index to
+        find the file ID, downloads the image to a temporary location, processes it,
+        and then deletes the temporary file. It also handles Google API token refresh.
+    2.  **Local Mode**: If images were uploaded locally, it uses the index to find
+        the file path in the `uploads` folder and processes it.
+
+    It consolidates the processing results with navigation and state information.
+
+    Args:
+        index (int): The zero-based index of the image to process from the
+            current list (either in `session['drive_image_files']` or
+            `session['image_paths']`).
+
+    Returns:
+        tuple[dict, int]: A tuple containing:
+            - A dictionary with the processed data. On success, this includes
+              image data, navigation state ('current_index', 'total_images',
+              'has_next', 'has_prev'), and metadata ('filename', 'source').
+              On error, it contains an 'error' key and may include a 'redirect' URL.
+            - An integer representing the HTTP status code (e.g., 200, 400, 401, 404, 500).
+    """
     app.logger.info(f"Getting processed image data for index: {index}.")
 
     if session.get('selected_google_drive_folder_id') and session.get('drive_image_files') is not None:
@@ -367,7 +453,17 @@ def get_processed_image_data(index):
 
 @app.route('/')
 def index():
-    """Main page."""
+    """Renders the main application page (index.html).
+
+    This is the main entry point for the user interface. It checks the session
+    to determine if the application is in "local upload mode" or "Google Drive mode"
+    and passes relevant state to the template, such as the number of images and
+    the current mode. This allows the Jinja2 template to render the correct UI
+    elements on initial page load.
+
+    Returns:
+        str: The rendered HTML content of the `index.html` template.
+    """
     app.logger.info("Main page '/' accessed.")
     drive_image_files = session.get('drive_image_files', [])
     drive_images_count = len(drive_image_files)
@@ -390,6 +486,17 @@ def index():
 
 @app.route('/login/google')
 def login_google():
+    """Initiates the Google OAuth 2.0 authentication flow.
+
+    This route generates the Google authorization URL with the necessary scopes
+    and a unique 'state' token for CSRF protection. It then redirects the user's
+    browser to this URL to grant the application permission to access their
+    Google Drive files.
+
+    Returns:
+        flask.Response: A redirect to the Google authorization page.
+        On configuration error, it renders an error page with a 500 status code.
+    """
     try:
         redirect_uri_for_google = url_for('authorize_google', _external=True)
         app.logger.info(f"Using redirect_uri for Google OAuth: {redirect_uri_for_google}")
@@ -412,6 +519,16 @@ def login_google():
 
 @app.route('/logout/google')
 def logout_google():
+    """Logs the user out from their Google account within the application.
+
+    This function clears all Google-related data from the user's session,
+    including credentials, state, and the list of Drive files. It effectively
+    resets the application to its initial state, requiring the user to
+    log in again to access Google Drive features.
+
+    Returns:
+        flask.Response: A redirect to the main index page.
+    """
     session.pop('google_credentials', None)
     session.pop('state', None)
     session.pop('selected_google_drive_folder_id', None)
@@ -424,6 +541,19 @@ def logout_google():
 
 @app.route('/drive/folders')
 def drive_folders():
+    """Fetches and displays a list of the user's Google Drive folders.
+
+    This route requires the user to be logged in. It uses the stored Google
+    credentials to make an API call to the Google Drive v3 API, listing all
+    folders owned by the user. It handles token expiration and refresh. The
+    list of folders is then passed to the `drive_folders.html` template for rendering.
+
+    Returns:
+        str | flask.Response: The rendered `drive_folders.html` page with the list
+            of folders. If the user is not logged in or the token refresh fails,
+            it redirects to the login page. If an API error occurs, it renders
+            the folder list page with an error message.
+    """
     if 'google_credentials' not in session:
         flash('Please login with Google first.', 'warning')
         return redirect(url_for('login_google'))
@@ -497,6 +627,21 @@ def drive_folders():
 
 @app.route('/drive/select_folder/<folder_id>/<path:folder_name>')
 def drive_select_folder(folder_id, folder_name):
+    """Handles the selection of a Google Drive folder.
+
+    When a user clicks a folder from the list, this route is called. It stores
+    the selected folder's ID and name in the session. It then makes another
+    Google Drive API call to list all image files within that folder. The list
+    of image files (ID and name) is stored in the session, and the user is
+    redirected back to the main index page, which will now be in "Drive mode".
+
+    Args:
+        folder_id (str): The unique ID of the selected Google Drive folder.
+        folder_name (str): The name of the selected Google Drive folder.
+
+    Returns:
+        flask.Response: A redirect to the main index page.
+    """
     if 'google_credentials' not in session:
         flash('Please login with Google first.', 'warning')
         return redirect(url_for('login_google'))
@@ -566,8 +711,19 @@ def drive_select_folder(folder_id, folder_name):
     return redirect(url_for('index'))
 
 def extract_folder_id_from_url(url):
-    """
-    Extracts Google Drive folder ID from common URL formats.
+    """Extracts a Google Drive folder ID from various common URL formats.
+
+    This utility function uses regular expressions to parse a URL string and find
+    the folder ID. It supports formats like:
+    - `.../folders/FOLDER_ID`
+    - `.../drive/u/0/folders/FOLDER_ID`
+    - `.../open?id=FOLDER_ID`
+
+    Args:
+        url (str): The Google Drive URL to parse.
+
+    Returns:
+        str | None: The extracted folder ID if found, otherwise None.
     """
     if not url:
         return None
@@ -585,6 +741,18 @@ def extract_folder_id_from_url(url):
 
 @app.route('/process_drive_link', methods=['POST'])
 def process_drive_link():
+    """Processes a Google Drive folder link submitted by the user.
+
+    This is an API endpoint that receives a Drive folder URL in a POST request.
+    It extracts the folder ID, fetches the folder's metadata (like its name) and
+    its image contents from the Google Drive API, and then sets up the session
+    for "Drive mode" just like `drive_select_folder`.
+
+    Returns:
+        flask.Response: A JSON response indicating success or failure.
+            On success, it includes the number of images found and the folder name.
+            On failure, it includes an error message and an appropriate HTTP status code.
+    """
     if 'google_credentials' not in session:
         app.logger.warning("Attempt to process Drive link without Google credentials.")
         return jsonify({'success': False, 'error': 'Not logged into Google. Please login first.', 'redirect': url_for('login_google')}), 401
@@ -658,6 +826,19 @@ def process_drive_link():
 
 @app.route('/authorize/google')
 def authorize_google():
+    """Handles the OAuth 2.0 callback from Google.
+
+    After a user authorizes the application, Google redirects them to this URL.
+    This function validates the 'state' parameter to prevent CSRF attacks, then
+    exchanges the authorization code (from the request URL) for an access token
+    and a refresh token. These credentials are then stored securely in the user's
+    session.
+
+    Returns:
+        flask.Response: A redirect to the main index page on success.
+        On error (e.g., state mismatch, token fetch failure), it returns an
+        error message or renders an error page.
+    """
     state = session.get('state')
     if not state or state != request.args.get('state'):
         app.logger.error("State mismatch during Google OAuth callback.")
@@ -689,7 +870,19 @@ def authorize_google():
 
 @app.route('/upload', methods=['POST'])
 def upload_files():
-    """Handle multiple file uploads."""
+    """Handles the uploading of multiple local image files.
+
+    This is an API endpoint for the file upload form. It receives a list of files,
+    clears any existing Google Drive session data, saves the valid image files to
+    the configured `UPLOAD_FOLDER`, and stores their filenames in the session.
+
+    Returns:
+        flask.Response: A JSON response containing:
+            - 'success' (bool): True if the operation was successful.
+            - 'image_count' (int): The number of valid images successfully uploaded.
+            - 'images' (list[str]): A list of the filenames of the uploaded images.
+            Returns a JSON error response if no files are provided.
+    """
     # Clear Drive session variables if local files are uploaded
     session.pop('selected_google_drive_folder_id', None)
     session.pop('selected_google_drive_folder_name', None)
@@ -743,7 +936,20 @@ def upload_files():
 
 @app.route('/process/<int:index>')
 def process_image_route(index):
-    """Process image at given index from local or Drive."""
+    """API endpoint to process an image at a specific index.
+
+    This route serves as a public API wrapper for the `get_processed_image_data`
+    helper function. It takes an integer index and returns the processed image
+    data as a JSON response. This is called by the frontend JavaScript to
+    display and update the image viewer.
+
+    Args:
+        index (int): The zero-based index of the image to process.
+
+    Returns:
+        flask.Response: A JSON response containing the processed image data and
+            navigation state, along with the appropriate HTTP status code.
+    """
     app.logger.info(f"Process image route invoked for index: {index}.")
     data, status_code = get_processed_image_data(index)
     # Flash messages are generally for page loads/redirects, not direct AJAX responses.
@@ -752,7 +958,20 @@ def process_image_route(index):
 
 @app.route('/navigate/<direction>')
 def navigate(direction):
-    """Navigate to next/previous image, supporting both local and Drive sources."""
+    """API endpoint to navigate to the next or previous image.
+
+    This route handles requests to move through the image sequence. It determines
+    the current source (local or Drive), calculates the new index based on the
+    `direction` parameter ('next' or 'prev'), and then calls the
+    `get_processed_image_data` function to fetch and process the new image.
+
+    Args:
+        direction (str): The direction to navigate, either 'next' or 'prev'.
+
+    Returns:
+        flask.Response: A JSON response containing the data for the new image,
+            identical in format to the response from `/process/<index>`.
+    """
     app.logger.info(f"Navigation request received: {direction}.")
 
     if session.get('selected_google_drive_folder_id') and session.get('drive_image_files') is not None:
