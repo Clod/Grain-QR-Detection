@@ -2,19 +2,14 @@
 
 venv/
 images/
+uploads/
 images_old/
 copy_of_images/
 __pycache__/
 
 Maiz-PruebaPiloto-20250530T155138Z-1-001.zip
 
-*.jpg
-*.png
-*.jpeg
-
-
-
-
 client_secret.json
 README.txt
 flask_app/.env
+flask_app/uploads/
