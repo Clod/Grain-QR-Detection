@@ -1,5 +1,26 @@
 # Grain-QD-Detection
 
+A web application for detecting ChArUco patterns and QR codes in images, with support for local files (located on the user's computer), server-side files (located on the server), and Google Drive integration.
+
+<img src="readme_img/main_screen.png" alt="Application Screenshot" style="width: 40%;">
+
+## Table of Contents
+
+- [Grain-QD-Detection](#grain-qd-detection)
+  - [Table of Contents](#table-of-contents)
+  - [Overview](#overview)
+  - [Key Features](#key-features)
+  - [How It Works](#how-it-works)
+  - [Technical Stack](#technical-stack)
+  - [Project Structure](#project-structure)
+  - [Getting Started](#getting-started)
+    - [Prerequisites](#prerequisites)
+    - [Configuration](#configuration)
+      - [Method 1: Local Development (`client_secret.json`)](#method-1-local-development-client_secretjson)
+      - [Method 2: Cloud Deployment (Environment Variable)](#method-2-cloud-deployment-environment-variable)
+    - [Local Development](#local-development)
+    - [Google Cloud Deployment](#google-cloud-deployment)
+
 ## Overview
 
 This project is a web application designed for the detection and analysis of quality control markers in images, specifically focusing on ChArUco patterns and QR codes. It provides a user-friendly interface to process images either from a local source or directly from a user's Google Drive, making it a versatile tool for image-based quality inspection and data extraction.
@@ -24,64 +45,83 @@ The application provides two main workflows for image processing:
 
 2.  **Google Drive Processing:** A user can log in with their Google account and provide a link to a folder in their Google Drive. The application then fetches the images from this folder and processes them sequentially, offering the same navigation and analysis experience as the local processing flow.
 
-## Technical Details
+## Technical Stack
 
-*   **Backend:** The application is built on the **Flask** web framework. For production environments (like the Docker container), it is served by **Gunicorn** for robustness and scalability.
-*   **Image Processing:** Core image analysis is performed using the **OpenCV** library, which provides the functions for ChArUco and QR code detection.
-*   **Deployment:** The application is designed for cloud-native deployment. It includes a `Dockerfile` for building a container image and helper scripts to automate building, running locally, and deploying to **Google Cloud Run**.
-*   **Configuration:** Google API credentials can be configured either through a `client_secret.json` file for local development or via environment variables for secure deployment in a cloud environment, with support for GCP Secret Manager.
+*   **Backend:** **Flask** web framework.
+*   **WSGI Server:** **Gunicorn** for production environments.
+*   **Image Processing:** **OpenCV** for ChArUco and QR code detection.
+*   **Containerization:** **Docker**.
+*   **Deployment:** **Google Cloud Run**.
 
-## Session Management and Data Handling
+## Project Structure
 
-The application relies on server-side sessions to manage user state and handle data securely and efficiently across multiple requests. This is crucial for both the Google Drive integration and for navigating through batches of images.
+The project follows a standard Flask application layout:
 
-### Session Mechanism
+```
+.
+├── app.py                  # Main Flask application logic and routes
+├── image_processor.py      # Core image analysis functions
+├── templates/              # HTML templates for the UI
+│   └── index.html
+├── static/                 # CSS, JavaScript, and other static assets
+├── Dockerfile              # Defines the container for deployment
+├── client_secret.json      # Google OAuth credentials (for local use)
+├── scripts/
+│   ├── build_and_run_locally.sh
+│   └── upload_to_gcp.sh
+└── README.md
+```
 
-The application utilizes Flask's built-in session management. These sessions are cookie-based but signed cryptographically. The session data itself is stored on the server, and only a secure identifier is sent to the client's browser in a cookie. This prevents client-side tampering and keeps sensitive information like API tokens from being exposed.
-
-### Handling Google Authentication
-
-The session is fundamental to the "Login with Google" feature. The authentication flow is as follows:
-
-1.  **Initiation:** The user clicks the login button, and the Flask backend initiates the Google OAuth 2.0 flow, redirecting the user to Google.
-2.  **Authorization:** The user is prompted by Google's consent screen to grant the application permission to view their Google Drive files.
-3.  **Token Exchange:** Upon successful authorization, Google redirects the user back to the application with an authorization code. The backend securely exchanges this code for an **access token** and a **refresh token**.
-4.  **Session Storage:** These critical tokens are stored in the user's server-side session. The access token is used to make authenticated API calls to Google Drive on the user's behalf.
-5.  **Logout:** When the user logs out, the application explicitly clears these credentials from the session, effectively revoking its access and invalidating the user's authenticated state for the application.
-
-### Handling Image Data and Navigation
-
-The session is also used to maintain the context of the user's current task, such as processing a folder of images. This creates a stateful experience.
-
-*   **Local Uploads:** When a user uploads multiple files, the application stores a list of temporary file paths in the session. An index, also stored in the session, keeps track of which image is currently being viewed.
-*   **Google Drive Batches:** When a user connects a Google Drive folder, the application fetches a list of file IDs for all images in that folder. This list of IDs and the current navigation index are stored in the session.
-*   **Navigation:** When the user clicks "Next" or "Previous", the backend uses the session's index to retrieve the next file path or ID from the list. It then fetches the corresponding image data (either from local storage or by making an API call to Google Drive), processes it, and returns the results. This makes the multi-image processing workflow seamless and stateful.
-
-## Setup and Deployment
+## Getting Started
 
 ### Prerequisites
 
 *   Docker installed on your local machine.
 *   A Google Cloud Platform project with the **Secret Manager** and **Cloud Run** APIs enabled.
-*   The `gcloud` CLI installed and configured for your GCP project.
+*   The Google Cloud SDK (`gcloud`) installed and configured for your GCP project.
 
-### Google Credentials Setup
+### Configuration
 
-1.  In the Google Cloud Console, create OAuth 2.0 credentials for a **Web application**.
-2.  Add the necessary authorized redirect URIs. For local development, this is typically `http://localhost:8080/oauth2callback`. For your deployed app, it will be `https://<your-cloud-run-url>/oauth2callback`.
-3.  **For local development:** Download the credentials as `client_secret.json` and place it in the project root.
-4.  **For cloud deployment:** It is highly recommended to store the entire content of the `client_secret.json` file in **GCP Secret Manager**. The application is configured to read these credentials from an environment variable that points to the secret's resource name.
+The application requires Google OAuth 2.0 credentials to access Google Drive.
+
+1.  In the Google Cloud Console, navigate to **APIs & Services > Credentials**.
+2.  Click **Create Credentials** and select **OAuth client ID**.
+3.  Choose **Web application** as the application type.
+4.  Add the necessary **Authorized redirect URIs**:
+    *   For local development: `http://mylocaldomain.com:8080/oauth2callback`
+    *   For deployed app: `https://<your-cloud-run-url>/oauth2callback`
+5.  Create the client ID. You will be presented with a Client ID and a Client Secret.
+
+**IMPORTANT:** For Google Authentication to workmylocaldomain.com must be defined in /etc/hosts pointing to localhost.
+and mylocaldomain.com declared in Google Auth platform (see below).
+
+<img src="readme_img/auth_screen.png" alt="Authentication Setup Screenshot" style="width: 40%;">
+
+#### Method 1: Local Development (`client_secret.json`)
+
+Download the credentials JSON file from the Google Cloud Console and save it as `client_secret.json` in the project's root directory. This method is suitable for local testing only.
+
+#### Method 2: Cloud Deployment (Environment Variable)
+
+For production environments like Cloud Run, it is highly recommended to use GCP Secret Manager for security.
+
+1.  Store the entire content of the `client_secret.json` file as a new secret in **GCP Secret Manager**.
+2.  Set the following environment variable in your Cloud Run service, pointing to the secret you just created:
+    *   `GOOGLE_CREDENTIALS_SECRET_PATH`: The full resource name of the secret.
+        *   Example: `projects/your-gcp-project-id/secrets/your-secret-name/versions/latest`
+
+The deployment script in `scripts/upload_to_gcp.sh` is designed to help set this environment variable.
 
 ### Local Development
 
-The project includes a script to simplify local setup. This script builds the Docker image and runs it in a local container, exposing the application on port 8080.
+The included script builds the Docker image and runs it in a local container.
 
 ```bash
-# From the project root
+# From the project root directory
 sh ./scripts/build_and_run_locally.sh
 ```
 
-You can then access the application at `http://localhost:8080`.
+You can then access the application at `http://mylocaldomain.com:8080`.
 
 ### Google Cloud Deployment
 
