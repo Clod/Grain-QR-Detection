@@ -66,6 +66,10 @@ import os
 from werkzeug.middleware.proxy_fix import ProxyFix # Added ProxyFix
 import re # Added for regex operations
 
+# Get the absolute path of the directory where app.py is located
+APP_ROOT = os.path.dirname(os.path.abspath(__file__))
+
+
 # Optional imports with error handling
 try:
     from utils.detect_and_draw_qr import detect_and_draw_qrcodes
@@ -99,15 +103,15 @@ if not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
     handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s'))
     app.logger.addHandler(handler)
 
-app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max file size
-app.config['DRIVE_TEMP_FOLDER'] = 'drive_temp_downloads' # Added
-app.config['SERVER_IMAGES_FOLDER'] = 'shared_data' # This maps to /app/shared_data in Docker
+app.config['UPLOAD_FOLDER'] = os.path.join(APP_ROOT, 'uploads')
+app.config['DRIVE_TEMP_FOLDER'] = os.path.join(APP_ROOT, 'drive_temp_downloads')
+app.config['SERVER_IMAGES_FOLDER'] = os.path.join(APP_ROOT, 'shared_data') # This maps to /app/shared_data in Docker
 
 # Ensure directories exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-os.makedirs(app.config['DRIVE_TEMP_FOLDER'], exist_ok=True) # Added
-os.makedirs(app.config['SERVER_IMAGES_FOLDER'], exist_ok=True) # Added
+os.makedirs(app.config['DRIVE_TEMP_FOLDER'], exist_ok=True)
+os.makedirs(app.config['SERVER_IMAGES_FOLDER'], exist_ok=True)
 
 # Google OAuth Configuration
 CLIENT_SECRETS_FILE = 'client_secret.json' # IMPORTANT: This file needs to be obtained from Google Cloud Console
@@ -1233,9 +1237,7 @@ def save_processed_image():
         os.makedirs(save_dir, exist_ok=True)
 
         # Create a new filename for the processed image
-        base_filename, ext = os.path.splitext(filename)
-        # Sanitize base_filename further if it contains path components (from recursive server scan)
-        base_filename = os.path.basename(base_filename)
+        base_filename, ext = os.path.splitext(os.path.basename(filename))
         processed_filename = f"{base_filename}_processed.jpg" # Save as JPG
         save_path = os.path.join(save_dir, processed_filename)
 
@@ -1247,9 +1249,8 @@ def save_processed_image():
 
         app.logger.info(f"Successfully saved processed image to: {save_path}")
         # Return a path relative to the shared folder for user feedback
-        user_friendly_path = os.path.join(processed_images_subfolder, processed_filename)
+        user_friendly_path = os.path.relpath(save_path, app.config['SERVER_IMAGES_FOLDER'])
         return jsonify({'success': True, 'message': f'Image saved to {user_friendly_path}', 'path': user_friendly_path})
-
     except HttpError as error:
         app.logger.error(f"Google Drive API HttpError during save: {error}", exc_info=True)
         return jsonify({'success': False, 'error': 'Google Drive API error while preparing to save.'}), 500
