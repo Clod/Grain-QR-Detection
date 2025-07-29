@@ -237,7 +237,7 @@ def cv_image_to_base64(cv_image):
     app.logger.info("Successfully converted OpenCV image to base64 JPEG.")
     return f"data:image/jpeg;base64,{image_base64}"
 
-def process_image(image_path):
+def process_image(image_path, return_image_object=False):
     """Loads an image from a file path and processes it for ChArUco and QR codes.
 
     This function performs the core image analysis:
@@ -249,9 +249,13 @@ def process_image(image_path):
 
     Args:
         image_path (str): The local file system path to the image to be processed.
+        return_image_object (bool): If True, the function returns the processed
+                                    OpenCV image object instead of the dictionary.
+
 
     Returns:
-        dict: A dictionary containing the processing results:
+        dict or numpy.ndarray: A dictionary containing the processing results,
+            or the processed OpenCV image object if return_image_object is True.
             - 'original_image' (str): Base64 encoded original image.
             - 'processed_image' (str): Base64 encoded image with detections drawn.
             - 'charuco_detected' (bool): True if a ChArUco board was found.
@@ -273,7 +277,7 @@ def process_image(image_path):
     cv_image = cv2.imread(image_path)
     if cv_image is None:
         app.logger.error(f"Failed to load image from path: {image_path}")
-        return result
+        return result if not return_image_object else None
     
     app.logger.info(f"Successfully loaded image: {image_path}")
     # Convert original image to base64
@@ -323,6 +327,9 @@ def process_image(image_path):
             app.logger.error(f"Exception during ChArUco board detection for {image_path}: {e}", exc_info=True)
     else:
         app.logger.warning("detect_charuco_board module not available. Skipping ChArUco detection.")
+
+    if return_image_object:
+        return processed_image
 
     result['processed_image'] = cv_image_to_base64(processed_image)
     app.logger.info(f"Finished image processing for: {image_path}. Charuco detected: {result['charuco_detected']}, QR codes: {len(result['qr_codes'])}")
@@ -1128,6 +1135,131 @@ def navigate(direction):
     app.logger.info(f"Navigating to image at index: {new_index} (Source: {source.capitalize()}).")
     data, status_code = get_processed_image_data(new_index)
     return jsonify(data), status_code
+
+@app.route('/save_processed_image', methods=['POST'])
+def save_processed_image():
+    """API endpoint to save the currently processed image to the server.
+
+    This function re-processes the current image to get the raw OpenCV image object,
+    creates a designated subfolder if it doesn't exist, and saves the image there.
+
+    Returns:
+        flask.Response: A JSON response indicating success or failure,
+            including the path to the saved image if successful.
+    """
+    app.logger.info("Received request to save processed image.")
+
+    # Determine the current index and source
+    source = None
+    index = -1
+    filename = None
+
+    if session.get('selected_google_drive_folder_id') and session.get('drive_image_files') is not None:
+        source = 'drive'
+        index = session.get('current_drive_image_index', -1)
+        if index != -1:
+            filename = session['drive_image_files'][index]['name']
+    elif session.get('is_server_mode') and session.get('server_image_files') is not None:
+        source = 'server'
+        index = session.get('current_server_image_index', -1)
+        if index != -1:
+            filename = session['server_image_files'][index]
+    elif session.get('image_paths') is not None:
+        source = 'local'
+        index = session.get('current_index', -1)
+        if index != -1:
+            filename = session['image_paths'][index]
+
+    if index == -1 or filename is None:
+        app.logger.warning("Save request failed: No image is currently being processed.")
+        return jsonify({'success': False, 'error': 'No active image to save.'}), 400
+
+    # This part is a bit tricky as get_processed_image_data is designed to return JSON.
+    # We need the raw image. We'll have to get the image path and process it again.
+    # This is a simplified version of the logic in get_processed_image_data.
+
+    image_path = None
+    temp_image_path = None # For Drive files
+
+    try:
+        if source == 'drive':
+            # This requires downloading the file again.
+            # This logic is duplicated from get_processed_image_data and could be refactored.
+            creds_dict = session.get('google_credentials')
+            if not creds_dict:
+                return jsonify({'success': False, 'error': 'Google session ended.', 'redirect': url_for('login_google')}), 401
+
+            credentials = google.oauth2.credentials.Credentials(**creds_dict)
+            if credentials.expired and credentials.refresh_token:
+                credentials.refresh(google.auth.transport.requests.Request())
+                session['google_credentials'] = {
+                    'token': credentials.token, 'refresh_token': credentials.refresh_token,
+                    'token_uri': credentials.token_uri, 'client_id': credentials.client_id,
+                    'client_secret': credentials.client_secret, 'scopes': credentials.scopes
+                }
+
+            service = build('drive', 'v3', credentials=credentials)
+            file_id = session['drive_image_files'][index]['id']
+            secure_file_name = secure_filename(filename)
+            temp_image_path = os.path.join(app.config['DRIVE_TEMP_FOLDER'], secure_file_name)
+
+            drive_request = service.files().get_media(fileId=file_id)
+            with io.FileIO(temp_image_path, 'wb') as fh:
+                downloader = googleapiclient.http.MediaIoBaseDownload(fh, drive_request)
+                done = False
+                while not done:
+                    _, done = downloader.next_chunk()
+            image_path = temp_image_path
+
+        elif source == 'server':
+            image_path = os.path.join(app.config['SERVER_IMAGES_FOLDER'], filename)
+        else: # local
+            image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+
+        if not os.path.exists(image_path):
+            app.logger.error(f"Save failed: Image file not found at path: {image_path}")
+            return jsonify({'success': False, 'error': 'Image file not found.'}), 404
+
+        # Re-process the image to get the cv2 object
+        processed_cv_image = process_image(image_path, return_image_object=True)
+
+        if processed_cv_image is None:
+            app.logger.error(f"Save failed: Processing the image for saving returned None.")
+            return jsonify({'success': False, 'error': 'Failed to process image for saving.'}), 500
+
+        # Define save path
+        processed_images_subfolder = 'proc_imgs'
+        save_dir = os.path.join(app.config['SERVER_IMAGES_FOLDER'], processed_images_subfolder)
+        os.makedirs(save_dir, exist_ok=True)
+
+        # Create a new filename for the processed image
+        base_filename, ext = os.path.splitext(filename)
+        # Sanitize base_filename further if it contains path components (from recursive server scan)
+        base_filename = os.path.basename(base_filename)
+        processed_filename = f"{base_filename}_processed.jpg" # Save as JPG
+        save_path = os.path.join(save_dir, processed_filename)
+
+        # Save the image
+        success = cv2.imwrite(save_path, processed_cv_image)
+        if not success:
+            app.logger.error(f"Failed to save processed image to {save_path}")
+            return jsonify({'success': False, 'error': 'Failed to write image file to disk.'}), 500
+
+        app.logger.info(f"Successfully saved processed image to: {save_path}")
+        # Return a path relative to the shared folder for user feedback
+        user_friendly_path = os.path.join(processed_images_subfolder, processed_filename)
+        return jsonify({'success': True, 'message': f'Image saved to {user_friendly_path}', 'path': user_friendly_path})
+
+    except HttpError as error:
+        app.logger.error(f"Google Drive API HttpError during save: {error}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Google Drive API error while preparing to save.'}), 500
+    except Exception as e:
+        app.logger.error(f"An unexpected error occurred during save: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'An unexpected error occurred.'}), 500
+    finally:
+        # Clean up temporary file if it was created
+        if temp_image_path and os.path.exists(temp_image_path):
+            os.remove(temp_image_path)
 
 
 if __name__ == '__main__':
