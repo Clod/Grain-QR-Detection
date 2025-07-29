@@ -1224,6 +1224,12 @@ def save_processed_image():
             app.logger.error(f"Save failed: Image file not found at path: {image_path}")
             return jsonify({'success': False, 'error': 'Image file not found.'}), 404
 
+        # Load the original image again to save it unmodified
+        original_cv_image = cv2.imread(image_path)
+        if original_cv_image is None:
+            app.logger.error(f"Save failed: Could not read original image from {image_path} to save it.")
+            return jsonify({'success': False, 'error': 'Failed to read original image for saving.'}), 500
+
         # Re-process the image to get the cv2 object
         processed_cv_image = process_image(image_path, return_image_object=True)
 
@@ -1238,19 +1244,36 @@ def save_processed_image():
 
         # Create a new filename for the processed image
         base_filename, ext = os.path.splitext(os.path.basename(filename))
+
+        # Save original image
+        original_filename = f"{base_filename}_original.jpg" # Save as JPG
+        original_save_path = os.path.join(save_dir, original_filename)
+        success_orig = cv2.imwrite(original_save_path, original_cv_image)
+        if not success_orig:
+            app.logger.error(f"Failed to save original image to {original_save_path}")
+            return jsonify({'success': False, 'error': 'Failed to write original image file to disk.'}), 500
+        app.logger.info(f"Successfully saved original image to: {original_save_path}")
+
+        # Save processed image
         processed_filename = f"{base_filename}_processed.jpg" # Save as JPG
-        save_path = os.path.join(save_dir, processed_filename)
-
-        # Save the image
-        success = cv2.imwrite(save_path, processed_cv_image)
-        if not success:
-            app.logger.error(f"Failed to save processed image to {save_path}")
+        processed_save_path = os.path.join(save_dir, processed_filename)
+        success_proc = cv2.imwrite(processed_save_path, processed_cv_image)
+        if not success_proc:
+            app.logger.error(f"Failed to save processed image to {processed_save_path}")
             return jsonify({'success': False, 'error': 'Failed to write image file to disk.'}), 500
+        app.logger.info(f"Successfully saved processed image to: {processed_save_path}")
 
-        app.logger.info(f"Successfully saved processed image to: {save_path}")
-        # Return a path relative to the shared folder for user feedback
-        user_friendly_path = os.path.relpath(save_path, app.config['SERVER_IMAGES_FOLDER'])
-        return jsonify({'success': True, 'message': f'Image saved to {user_friendly_path}', 'path': user_friendly_path})
+        # Return paths relative to the shared folder for user feedback
+        user_friendly_path_orig = os.path.relpath(original_save_path, app.config['SERVER_IMAGES_FOLDER'])
+        user_friendly_path_proc = os.path.relpath(processed_save_path, app.config['SERVER_IMAGES_FOLDER'])
+        return jsonify({
+            'success': True,
+            'message': f'Images saved to {user_friendly_path_orig} and {user_friendly_path_proc}',
+            'paths': {
+                'original': user_friendly_path_orig,
+                'processed': user_friendly_path_proc
+            }
+        })
     except HttpError as error:
         app.logger.error(f"Google Drive API HttpError during save: {error}", exc_info=True)
         return jsonify({'success': False, 'error': 'Google Drive API error while preparing to save.'}), 500
