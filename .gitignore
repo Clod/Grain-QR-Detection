@@ -1,7 +1,7 @@
 .DS_Store
 
 venv/
-images/
+/images/
 uploads/
 images_old/
 copy_of_images/

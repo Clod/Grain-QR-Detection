@@ -24,6 +24,11 @@ FULL_IMAGE_NAME="${IMAGE_NAME}:${TAG}"
 PROJECT_ID="utn-granos"
 SECRET_NAME="oauth-client"
 SECRET_VERSION="latest" # or a specific version number
+
+# Docker Volume details
+# This is the named volume that holds the images for the "Select Server Images" feature.
+# Ensure this volume exists and is populated with your images.
+VOLUME_NAME="code_shared_ftp_data"
 # --- End Configuration ---
 
 # --- Build Step ---
@@ -53,4 +58,5 @@ docker run \
   --rm \
   -p 8080:8080 \
   -e GOOGLE_OAUTH_CREDENTIALS="$SECRET_CONTENT" \
+  -v "${VOLUME_NAME}:/app/shared_data" \
   "${FULL_IMAGE_NAME}"

@@ -100,6 +100,7 @@ class ImageViewer {
         this.zoomInBtn = document.getElementById('zoomInBtn');
         this.zoomOutBtn = document.getElementById('zoomOutBtn');
         this.selectServerImagesBtn = document.getElementById('selectServerImagesBtn'); // New
+        this.saveProcessedBtn = document.getElementById('saveProcessedBtn');
     }
     
     /**
@@ -137,6 +138,35 @@ class ImageViewer {
         // Handle Server Images selection
         if (this.selectServerImagesBtn) {
             this.selectServerImagesBtn.addEventListener('click', () => this.handleSelectServerImages());
+        }
+
+        // Handle Save Processed Image
+        if (this.saveProcessedBtn) {
+            this.saveProcessedBtn.addEventListener('click', () => this.handleSaveProcessedImage());
+        }
+    }
+
+    async handleSaveProcessedImage() {
+        this.updateStatus('Saving processed image...');
+
+        try {
+            const response = await fetch('/save_processed_image', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                this.updateStatus(result.message);
+            } else {
+                this.updateStatus('Error saving image: ' + (result.error || 'Unknown error'));
+            }
+        } catch (error) {
+            this.updateStatus('Failed to save image: ' + error.message);
+            console.error('Full error details:', error);
         }
     }
     
