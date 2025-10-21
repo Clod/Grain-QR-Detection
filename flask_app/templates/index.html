@@ -9,7 +9,11 @@
 </head>
 <body>
     <div class="container-fluid">
-        <h1 class="text-center my-4">Image Viewer and Processor</h1>
+        <div class="d-flex justify-content-center align-items-center my-4">
+            <img src="{{ url_for('static', filename='images/logo-utn-cropped.png') }}" alt="Left Logo" style="height: 50px;">
+            <h1 class="text-center mx-5 mb-0">Image Viewer and Processor</h1>
+            <img src="{{ url_for('static', filename='images/giar_logo_1_1x.png') }}" alt="Right Logo" style="height: 50px;">
+        </div>
 
         <!-- Flash Messages -->
         {% with messages = get_flashed_messages(with_categories=true) %}
