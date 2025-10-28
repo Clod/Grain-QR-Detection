@@ -117,8 +117,8 @@ The deployment script in `scripts/upload_to_gcp.sh` is designed to help set this
 The included script builds the Docker image and runs it in a local container.
 
 ```bash
-# From the project root directory
-sh ./scripts/build_and_run_locally.sh
+# From the flask_app directory
+% ./docker_build_and_run_locally.sh
 ```
 
 You can then access the application at `http://mylocaldomain.com:8080`.
@@ -129,7 +129,7 @@ A deployment script automates the process of building the Docker image, pushing 
 
 ```bash
 # Make sure to edit the script with your GCP project details first
-sh ./scripts/upload_to_gcp.sh
+% ./deploy_to_gcp.sh
 ```
 
 This script ensures that the correct environment variables (like the one for Google credentials) are set for the Cloud Run service during deployment.

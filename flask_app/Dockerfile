@@ -66,6 +66,10 @@ ENV PATH="/opt/venv/bin:$PATH"
 # Create and set the working directory.
 WORKDIR /app
 # Copy application code from the build context. Assumes a .dockerignore file is present.
+# Create directories that the appuser will need to write to at runtime
+RUN mkdir -p /app/uploads /app/drive_temp_downloads /app/shared_data && \
+    chown -R appuser:appgroup /app/uploads /app/drive_temp_downloads /app/shared_data
+
 COPY --chown=appuser:appgroup . .
 
 # Set environment variable for Ultralytics config to be in user's home.

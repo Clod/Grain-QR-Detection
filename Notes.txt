@@ -1,4 +1,4 @@
-The process below is alteady automated in:
+The process below is already automated in:
 
 docker_build_and_run_locally.sh
 
