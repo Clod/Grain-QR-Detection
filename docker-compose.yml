@@ -44,8 +44,8 @@ services:
     depends_on:
       - ftp-server # Optional: ensures ftp-server starts before flask-app, though not strictly required for volume sharing
     # Load secrets and config from an environment file
-    env_file:
-      - ./flask_app/.env
+    # env_file:
+    #  - ./flask_app/.env
 
 volumes:
   shared_ftp_data:
