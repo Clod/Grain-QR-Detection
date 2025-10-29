@@ -1,17 +1,17 @@
-# Grain-QD-Detection
+# Flask Image Processor for Grain-QD-Detection
 
-A web application for detecting ChArUco patterns and QR codes in images, with support for local uploads, server-side files, and Google Drive integration.
+This directory contains the core Flask web application for the Grain-QD-Detection project. It provides a web-based user interface for detecting ChArUco patterns and QR codes in images sourced from local uploads, a server-side directory, or Google Drive.
 
-<img src="readme_img/main_screen.png" alt="Application Screenshot" style="width: 90%;">
+<img src="../readme_img/main_screen.png" alt="Application Screenshot" style="width: 90%;">
 
 ## Table of Contents
 
-- [Grain-QD-Detection](#grain-qd-detection)
+- [Flask Image Processor for Grain-QD-Detection](#flask-image-processor-for-grain-qd-detection)
   - [Table of Contents](#table-of-contents)
   - [Overview](#overview)
   - [Key Features](#key-features)
   - [Technical Stack](#technical-stack)
-  - [Project Structure](#project-structure)
+  - [Application Structure](#application-structure)
   - [Configuration](#configuration)
     - [Google OAuth 2.0 Credentials](#google-oauth-20-credentials)
     - [Environment Variables](#environment-variables)
@@ -50,32 +50,23 @@ The application's primary function is to process images to identify and analyze 
 *   **Containerization:** **Docker**
 *   **Deployment Target:** **Google Cloud Run**
 
-## Project Structure
+## Application Structure
 
 ```
 .
-├── flask_app/              # Contains the core Flask web application
-│   ├── app.py              # Main Flask application logic, routes, and API endpoints
-│   ├── utils/              # Image processing helper modules
-│   │   ├── charuco_detector.py
-│   │   └── detect_and_draw_qr.py
-│   ├── templates/          # Jinja2 HTML templates
-│   │   └── index.html
-│   ├── static/             # Frontend assets (CSS, JavaScript)
-│   │   └── app.js
-│   ├── Dockerfile          # Defines the application's Docker image
-│   ├── tests/              # Unit and integration tests
-│   │   └── test_app.py
-│   ├── docker_build_and_run_locally.sh # Script for local execution
-│   └── deploy_to_gcp.sh    # Script for deploying to Google Cloud
-├── docker-compose.yml      # Defines services for local development (app, FTP server)
-├── docker-compose.override.yml # Development-specific overrides (e.g., for ARM architecture)
-├── scripts/
-│   ├── build_and_run_locally.sh # Script for local execution via Docker
-│   └── upload_to_gcp.sh    # Script for deploying to Google Cloud
-├── README.md               # Original README file
-├── README.txt              # This comprehensive README file
-└── ...
+├── app.py                  # Main Flask application logic, routes, and API endpoints
+├── utils/                  # Image processing helper modules
+│   ├── charuco_detector.py
+│   └── detect_and_draw_qr.py
+├── templates/              # Jinja2 HTML templates
+│   └── index.html
+├── static/                 # Frontend assets (CSS, JavaScript)
+│   └── app.js
+├── Dockerfile              # Defines the application's Docker image
+├── tests/                  # Unit and integration tests
+│   └── test_app.py
+├── docker_build_and_run_locally.sh # Script for local execution
+└── deploy_to_gcp.sh        # Script for deploying to Google Cloud
 ```
 
 ## Configuration
@@ -90,10 +81,6 @@ To use the Google Drive integration, the application needs OAuth 2.0 client cred
     *   For local development: `http://mylocaldomain.com:8080/oauth2callback`
     *   For deployed app: `https://<your-cloud-run-url>/oauth2callback`
 4.  Download the credentials JSON file.
-
-**IMPORTANT:** For Google Authentication to work, `mylocaldomain.com` must be defined in `/etc/hosts` pointing to `127.0.0.1`, and `mylocaldomain.com` must be declared in Google Auth platform.
-
-<img src="readme_img/auth_screen.png" alt="Authentication Setup Screenshot" style="width: 40%;">
 
 ### Environment Variables
 
@@ -117,7 +104,7 @@ This method builds the Docker image and runs a container, automatically fetching
 **Steps:**
 
 1.  **Configure the Script:**
-    Open `flask_app/docker_build_and_run_locally.sh` and ensure the variables `PROJECT_ID`, `SECRET_NAME`, and `SECRET_VERSION` match your GCP setup.
+    Open `docker_build_and_run_locally.sh` and ensure the variables `PROJECT_ID`, `SECRET_NAME`, and `SECRET_VERSION` match your GCP setup.
 
 2.  **Run the Script:**
     Make the script executable and run it from the `flask_app` directory.
@@ -133,64 +120,19 @@ This method builds the Docker image and runs a container, automatically fetching
 
 The project includes `docker-compose.yml` files for a more integrated local development setup, which also runs an FTP server for testing the "Server-Side Images" feature. This is ideal for active development.
 
-**Services Included:**
-- **ftp-server**: An FTP server for testing server-side image processing
-- **flask-app**: The main Flask application with live-reloading support
-
-**Basic Commands:**
 ```bash
 # Build and start the services in the background
 docker compose up -d --build
 
 # Stop and remove the containers
 docker compose down
-
-# View logs
-docker compose logs -f
-
-# Access individual services
-docker compose exec flask-app bash
-docker compose exec ftp-server bash
 ```
 
-**ARM Mac Development:**
-For local development on an ARM-based Mac (M1/M2), the `docker-compose.override.yml` file automatically provides:
-- ARM-native images for better performance
-- Gunicorn live-reloading for development
-- Optimized settings for local development
-
-**Environment Configuration:**
-When using Docker Compose, you will need to manage the `GOOGLE_OAUTH_CREDENTIALS` environment variable for the `flask-app` service. You can do this by:
-1. Creating an `.env` file in the project root
-2. Using Docker secrets
-3. Passing environment variables directly
-
-Example `.env` file:
-```bash
-GOOGLE_OAUTH_CREDENTIALS=your_oauth_credentials_json_here
-FLASK_SECRET_KEY=your_secret_key_here
-```
-
-**Shared Volume:**
-The FTP server and Flask app share a named volume `shared_ftp_data` which is mounted to `/app/shared_data` in the Flask container. This allows you to:
-- Upload images via FTP to test server-side processing
-- Access the same files from within the Flask application
-
-**Docker Compose File Structure:**
-
-The `docker-compose.yml` file defines:
-- **ftp-server**: Uses `fauria/vsftpd:latest` image with FTP credentials and port mappings
-- **flask-app**: Builds from `./flask_app` directory with volume mounts for live-reloading
-- **shared_ftp_data**: Named volume for sharing files between services
-
-The `docker-compose.override.yml` file (for ARM Mac development):
-- Overrides the ftp-server image to use `dotkevinwong/vsftpd-arm` for ARM compatibility
-- Sets the flask-app platform to `linux/arm64` for native performance
-- Enables Gunicorn live-reloading with `--reload` flag
+When using Docker Compose, you will need to manage the `GOOGLE_OAUTH_CREDENTIALS` environment variable for the `flask-app` service yourself, for example by using an `.env` file.
 
 ## Google Cloud Deployment
 
-The `flask_app/deploy_to_gcp.sh` script automates deployment to Google Cloud Run. It builds the image, pushes it to Google Container Registry (GCR), and deploys it as a Cloud Run service with the necessary secret configuration.
+The `deploy_to_gcp.sh` script automates deployment to Google Cloud Run. It builds the image, pushes it to Google Container Registry (GCR), and deploys it as a Cloud Run service with the necessary secret configuration.
 
 ### Prerequisites
 
@@ -201,7 +143,7 @@ The `flask_app/deploy_to_gcp.sh` script automates deployment to Google Cloud Run
 ### Deployment Script
 
 1.  **Configure the Script:**
-    Open `flask_app/deploy_to_gcp.sh` and edit the variables at the top to match your environment:
+    Open `deploy_to_gcp.sh` and edit the variables at the top to match your environment:
     *   `PROJECT_ID`: Your Google Cloud Project ID.
     *   `IMAGE_NAME`: The desired name for your Docker image.
     *   `SERVICE_NAME`: The name for your Cloud Run service.
@@ -216,13 +158,3 @@ The `flask_app/deploy_to_gcp.sh` script automates deployment to Google Cloud Run
     ```
 
 The script will output the URL of the deployed service upon completion. Remember to add this new URL to your **Authorized redirect URIs** in the Google Cloud Console for the OAuth client ID.
-
-## How It Works
-
-The application provides two main workflows for image processing:
-
-1.  **Local File Processing:** A user can upload one or more images from their computer. The application processes the first image and displays the original, the processed version with markers highlighted, and an information panel. Navigation buttons allow the user to cycle through the entire batch of uploaded images.
-
-2.  **Google Drive Processing:** A user can log in with their Google account and provide a link to a folder in their Google Drive. The application then fetches the images from this folder and processes them sequentially, offering the same navigation and analysis experience as the local processing flow.
-
-3.  **Server-Side Processing:** When using Docker Compose, users can upload images via FTP to the shared volume, which are then accessible through the server-side image processing feature in the web interface.
