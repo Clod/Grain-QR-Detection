@@ -33,9 +33,11 @@ services:
     ports:
       # Map host port 8080 to container port 8080 (where gunicorn listens)
       - "8080:8080"
+    environment:
+      - FTP_USER=myuser # To have the location of the target images
     volumes:
       # Mount the application code for live-reloading during development
-      - ./flask_app:/app
+      #- ./flask_app:/app
       # Mount the shared volume for FTP data
       - shared_ftp_data:/app/shared_data
     # The command is now inherited from the Dockerfile's CMD.
@@ -46,6 +48,22 @@ services:
     # Load secrets and config from an environment file
     # env_file:
     #  - ./flask_app/.env
+
+
+
+  camerastreamlitftp:
+    build:
+      context: ./streamlit-app
+    container_name: camera-streamlit-ftp
+    ports:
+      - "8501:8501"
+    environment:
+      FTP_HOST: host.docker.internal
+      FTP_USER: myuser
+      FTP_PASS: mypassword
+    depends_on:
+      - ftp-server
+    restart: always
 
 volumes:
   shared_ftp_data:

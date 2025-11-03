@@ -48,10 +48,9 @@ RUN apt-get update && \
         libsm6 \
         libxext6 \
         libxrender1 \
-        libzbar0 \
-    && \
-    apt-get clean && \
+        libzbar0 && \
     rm -rf /var/lib/apt/lists/*
+
 
 # Create a non-root user and group for enhanced security.
 RUN groupadd --gid 1001 appgroup && \
@@ -66,10 +65,6 @@ ENV PATH="/opt/venv/bin:$PATH"
 # Create and set the working directory.
 WORKDIR /app
 # Copy application code from the build context. Assumes a .dockerignore file is present.
-# Create directories that the appuser will need to write to at runtime
-RUN mkdir -p /app/uploads /app/drive_temp_downloads /app/shared_data && \
-    chown -R appuser:appgroup /app/uploads /app/drive_temp_downloads /app/shared_data
-
 COPY --chown=appuser:appgroup . .
 
 # Set environment variable for Ultralytics config to be in user's home.
@@ -77,8 +72,12 @@ ENV YOLO_CONFIG_DIR=/home/appuser/.config/Ultralytics
 
 EXPOSE 8080
 
+RUN chown -R appuser:appgroup /app
+RUN chmod -R 777 /app
 # Switch to the non-root user
 USER appuser
+RUN mkdir /home/appuser/.config
+RUN mkdir /home/appuser/.config/Ultralytics
 
 # Use Gunicorn for production.
 CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "1", "--threads", "4", "--worker-class", "gthread", "--timeout", "300", "app:app"]
