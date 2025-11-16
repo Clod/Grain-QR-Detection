@@ -26,11 +26,11 @@ spec:
             - name: FTP_USER
               valueFrom:
                 secretKeyRef:
-                  name: grainqr-streamlit-app-secret 
+                  name: ftp-server-secret
                   key: FTP_USER
             - name: FTP_PASS
               valueFrom:
                 secretKeyRef:
-                  name: grainqr-streamlit-app-secret 
+                  name: ftp-server-secret
                   key: FTP_PASS
             

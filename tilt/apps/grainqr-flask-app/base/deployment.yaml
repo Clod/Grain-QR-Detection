@@ -21,7 +21,7 @@ spec:
             - name: FTP_USER
               valueFrom:
                 secretKeyRef:
-                  name: grainqr-flask-app-secret 
+                  name: ftp-server-secret
                   key: FTP_USER
           volumeMounts:
           - name: ftp-data

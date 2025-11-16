@@ -40,20 +40,6 @@ replce_file(
     "./apps/ftp-server/local/patches/secret.yaml",
     )
 
-# ------------------------ grainqr-flask-app -----------------------------------
-
-replce_file(
-    "./apps/grainqr-flask-app/local/patches/secret.template.yaml",
-    "./apps/grainqr-flask-app/local/patches/secret.yaml",
-    )
-
-
-# ------------------------ grainqr-streamlit-app -------------------------------
-
-replce_file(
-    "./apps/grainqr-streamlit-app/local/patches/secret.template.yaml",
-    "./apps/grainqr-streamlit-app/local/patches/secret.yaml",
-    )
 
 # ------------------------------------------------------------------------------
 # ------------------------ Deploy ----------------------------------------------

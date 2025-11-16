@@ -3,13 +3,6 @@ kind: Kustomization
 resources:
   - ../base
 
-
-patches:
-  - path: ./patches/secret.yaml
-    target:
-      kind: Secret
-      name: grainqr-streamlit-app-secret
-
 images:
   - name: streamlitIMAGE
     newName: grainqr-streamlit-app
