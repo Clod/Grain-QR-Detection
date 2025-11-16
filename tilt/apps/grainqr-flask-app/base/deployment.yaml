@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grainqr-flask-app
+spec:
+  replicas: 1
+  selector:  
+    matchLabels:
+      app: grainqr-flask-app
+  template:
+    metadata:
+      labels:
+        app: grainqr-flask-app
+    spec:
+      containers:
+        - name: grainqr-flask-app
+          imagePullPolicy: Always
+          image: flaskIMAGE
+          resources: {}
+          env:
+            - name: FTP_USER
+              valueFrom:
+                secretKeyRef:
+                  name: grainqr-flask-app-secret 
+                  key: FTP_USER
+          volumeMounts:
+          - name: ftp-data
+            mountPath: /app/shared_data
+      volumes:
+      - name: ftp-data
+        persistentVolumeClaim:
+          claimName: ftp-data-pvc
+            

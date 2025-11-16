@@ -14,3 +14,5 @@ client_secret.json
 README.txt
 flask_app/.env
 flask_app/uploads/
+
+.env

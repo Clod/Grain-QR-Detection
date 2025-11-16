@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grainqr-streamlit-app
+spec:
+  replicas: 1
+  selector:  
+    matchLabels:
+      app: grainqr-streamlit-app
+  template:
+    metadata:
+      labels:
+        app: grainqr-streamlit-app
+    spec:
+      containers:
+        - name: grainqr-streamlit-app
+          imagePullPolicy: Always
+          image: streamlitIMAGE
+          resources: {}
+          env:
+            - name: FTP_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: grainqr-streamlit-app-config
+                  key: FTP_HOST
+            - name: FTP_USER
+              valueFrom:
+                secretKeyRef:
+                  name: grainqr-streamlit-app-secret 
+                  key: FTP_USER
+            - name: FTP_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: grainqr-streamlit-app-secret 
+                  key: FTP_PASS
+            

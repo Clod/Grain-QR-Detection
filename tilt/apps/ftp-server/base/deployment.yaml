@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ftp-server
+  labels:
+    app: ftp-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ftp-server
+  template:
+    metadata:
+      labels:
+        app: ftp-server
+    spec:
+      containers:
+      - name: ftp-server
+        image: fauria/vsftpd:latest
+        ports:
+        - containerPort: 21
+          name: ftp-control
+        - containerPort: 20
+          name: ftp-data
+        - containerPort: 21100
+          name: pasv-start
+        - containerPort: 21110
+          name: pasv-end
+        env:
+        - name: FTP_USER
+          valueFrom:
+            secretKeyRef:
+              name: ftp-server-secret
+              key: FTP_USER
+        - name: FTP_PASS
+          valueFrom:
+            secretKeyRef:
+              name: ftp-server-secret
+              key: FTP_PASS
+        envFrom:
+        - configMapRef:
+            name: ftp-config
+        volumeMounts:
+        - name: ftp-data
+          mountPath: /home/vsftpd
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+      volumes:
+      - name: ftp-data
+        persistentVolumeClaim:
+          claimName: ftp-data-pvc

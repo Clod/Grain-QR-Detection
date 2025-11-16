@@ -1,0 +1,54 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ftp-server-service
+  labels:
+    app: ftp-server-service
+spec:
+  type: NodePort  # Change to LoadBalancer for cloud environments
+  selector:
+    app: ftp-server
+  ports:
+  - name: ftp-control-debug
+    port: 30021
+    targetPort: 21
+  - name: ftp-control
+    port: 21
+    targetPort: 21
+  - name: ftp-data
+    port: 20
+    targetPort: 20
+  # Passive mode ports (you'll need to expose all of them)
+  - name: pasv-21100
+    port: 21100
+    targetPort: 21100
+  - name: pasv-21101
+    port: 21101
+    targetPort: 21101
+  - name: pasv-21102
+    port: 21102
+    targetPort: 21102
+  - name: pasv-21103
+    port: 21103
+    targetPort: 21103
+  - name: pasv-21104
+    port: 21104
+    targetPort: 21104
+  - name: pasv-21105
+    port: 21105
+    targetPort: 21105
+  - name: pasv-21106
+    port: 21106
+    targetPort: 21106
+  - name: pasv-21107
+    port: 21107
+    targetPort: 21107
+  - name: pasv-21108
+    port: 21108
+    targetPort: 21108
+  - name: pasv-21109
+    port: 21109
+    targetPort: 21109
+  - name: pasv-21110
+    port: 21110
+    targetPort: 21110

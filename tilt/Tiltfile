@@ -1,0 +1,87 @@
+load('ext://dotenv', 'dotenv')
+dotenv(fn='.env')
+watch_file('.env')
+
+
+################################################################################
+# ------------------------ Apps ------------------------------------------------
+################################################################################
+
+# ------------------------ Flask APP -------------------------------------------
+docker_build(
+    "grainqr-flask-app:dev",
+    context="../flask_app",
+    dockerfile="../flask_app/Dockerfile",
+    live_update=[]  # dummy live_update to trigger builds
+)
+
+# ------------------------ Streamlit APP ---------------------------------------
+docker_build(
+    "grainqr-streamlit-app:dev",
+    context="../streamlit-app",
+    dockerfile="../streamlit-app/Dockerfile",
+    live_update=[]  # dummy live_update to trigger builds
+)
+
+
+
+# ------------------------------------------------------------------------------
+# ------------------------ Env Vars Substitution -------------------------------
+# ------------------------------------------------------------------------------
+def replce_file(input, output):
+    watch_file(input)
+    local("envsubst < " + input + " > " + output, dir = '.')
+    watch_settings(ignore=output)
+
+# ------------------------ FTP Server ------------------------------------------
+
+replce_file(
+    "./apps/ftp-server/local/patches/secret.template.yaml",
+    "./apps/ftp-server/local/patches/secret.yaml",
+    )
+
+# ------------------------ grainqr-flask-app -----------------------------------
+
+replce_file(
+    "./apps/grainqr-flask-app/local/patches/secret.template.yaml",
+    "./apps/grainqr-flask-app/local/patches/secret.yaml",
+    )
+
+
+# ------------------------ grainqr-streamlit-app -------------------------------
+
+replce_file(
+    "./apps/grainqr-streamlit-app/local/patches/secret.template.yaml",
+    "./apps/grainqr-streamlit-app/local/patches/secret.yaml",
+    )
+
+# ------------------------------------------------------------------------------
+# ------------------------ Deploy ----------------------------------------------
+# ------------------------------------------------------------------------------
+
+# ------------------------ FTP -------------------------------------------------
+k8s_yaml([
+    kustomize('./apps/ftp-server/local'),
+    ])
+
+# Telegram Bot
+k8s_resource("ftp-server", port_forwards=["30021","21100","21101","21102","21103","21104","21105","21106","21107","21108","21109","21110"], labels=["ftp-server"])
+
+
+
+# ------------------------ grainqr-flask-app -----------------------------------
+k8s_yaml([
+    kustomize('./apps/grainqr-flask-app/local'),
+    ])
+
+# Telegram Bot
+k8s_resource("grainqr-flask-app", port_forwards="8080", labels=["image-viewer"], resource_deps=["ftp-server"])
+
+
+# ------------------------ grainqr-streamlit-app -------------------------------
+k8s_yaml([
+    kustomize('./apps/grainqr-streamlit-app/local'),
+    ])
+
+# Telegram Bot
+k8s_resource("grainqr-streamlit-app", port_forwards="8501", labels=["mobile-app"], resource_deps=["ftp-server"])
