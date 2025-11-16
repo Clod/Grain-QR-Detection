@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-image="giar-grainqr-flask-app"
+image="grainqr-streamlit-app"
 version="latest"
 
 
